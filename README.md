@@ -3,7 +3,7 @@
 ![](https://i.imgur.com/hb38Zs0.jpg)
 
 ## Quest Status:
-WORKING ON IT (SOONTM)
+kinda working a bit
 
 ### Bugs / Feature requests:
 Please feel free to submit anything to the issues page here
