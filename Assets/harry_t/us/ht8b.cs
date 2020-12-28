@@ -15,6 +15,15 @@
 								   to easier implementation of optional rules.
 								-	Allow colour switching between UK/USA/Default colour sets
 								-  Grips change colour based on which turn it is
+					0.3.0a	-	Added desktop mode
+								-	Sink opponents ball = loss turn
+								-	Removed coloursets
+					0.3.1a	-	Desktop QOL
+					0.3.2a	-	Reduced sensitivity
+								-	Added pad bytes
+					0.3.7a	-	Quest support
+					0.3.8a	-	Switched network string to base64 encoded
+								-	Changed initial break setup
 
  Networking Model Information:
 	
@@ -36,7 +45,7 @@
 
  Information about the data:
 
-	- Data is transfered using 1 Udon Synced string which is 21 wchar in length
+	- Data is transfered using 1 Udon Synced string which is 82 bytes long, encoded to base64( 110 bytes )
 	- Critical game states are packed into a bitmask at #19
 	- Floating point positions are encoded/decoded as follows:
 		Encode:
@@ -65,7 +74,7 @@
 	[ 0x00  ]	ball positions			(compressed quantized vec2's)
 	[ 0x40  ]	cue ball velocity		^
 	[ 0x44  ]	cue ball angular vel	^
-	
+
 	[ 0x48  ]	sn_pocketed				uint16 bitmask ( above table )
 	
 	[ 0x4A  ]	game state flags		| bit #	| mask	| what				| 
@@ -80,6 +89,7 @@
 												
 	[ 0x4C  ]	packet #					uint16
 	[ 0x4E  ]	gameid					uint16
+	[ 0x50  ]	colourset id			uint16
 
  Physics Implementation:
 	
@@ -115,6 +125,14 @@
 
 // Currently unstable..
 // #define HT8B_ALLOW_AUTOSWITCH
+
+#if !UNITY_ANDROID
+#define HT8B_DEBUGGER
+#else
+#define HT_QUEST
+#endif
+
+//#define MULTIGAMES_PORTAL
 
 using UdonSharp;
 using UnityEngine;
@@ -157,6 +175,8 @@ const string FRP_END =	"</color>";
 [SerializeField] ht8b_cue[]	gripControllers;
 [SerializeField] Material		guidelineMat;
 
+[SerializeField] Transform[]	portalPositions;
+
 // Audio Components
 AudioSource aud_main;
 
@@ -170,11 +190,12 @@ AudioSource aud_main;
 
 [UdonSynced]	private string netstr;		// dumpster fire
 					private string netstr_prv;
+					byte[]			net_data = new byte[0x52];
 
 // Networked game flags
 uint	sn_pocketed		= 0x00U;		// 18 Each bit represents each ball, if it has been pocketed or not
 
-bool	sn_simulating	= false;		// 19:0 (0x01)		True whilst balls are rolling
+public bool	sn_simulating	= false;		// 19:0 (0x01)		True whilst balls are rolling
 uint	sn_turnid		= 0x00U;		// 19:1 (0x02)		Whos turn is it, 0 or 1
 bool  sn_foul			= false;		// 19:2 (0x04)		End-of-turn foul marker
 bool  sn_open			= true;		// 19:3 (0x08)		Is the table open?
@@ -225,6 +246,17 @@ bool	ballsMoving		= false;		// Tracker variable to see if balls are still on the
 
 bool	isReposition	= false;			// Repositioner is active
 float repoMaxX			= TABLE_WIDTH;	// For clamping to table or set lower for kitchen
+
+// these had to be put up here for some reason
+const float FIXED_TIME_STEP = 0.0125f;			// time step in seconds per iteration
+const float TIME_ALPHA = 50.0f;					// (unused) physics interpolation
+
+// Physics memory
+
+public Vector2[] ball_co = new Vector2[16];	// Current positions
+Vector2[] ball_og = new Vector2[16];	// Break positions
+public Vector2[] ball_vl = new Vector2[16];	// Current velocities
+Vector2	 cue_avl = Vector2.zero;		// Cue ball angular velocity
 
 // General local aesthetic events
 // =========================================================================================================================
@@ -306,6 +338,245 @@ const string uniform_cue_colour = "_ReColor";
 
 #endif
 
+// Epic crossover portal mode stuff
+
+[SerializeField] Material portal_dispmat_m;
+
+[SerializeField] Material portal_dispmat_0_0;	// Table
+[SerializeField] Material portal_dispmat_1_0;
+[SerializeField] Material portal_dispmat_0_1;	// Balls
+[SerializeField] Material portal_dispmat_1_1;
+
+[SerializeField] Material portal_dispmat_gl0;	// Guideline
+[SerializeField] Material portal_dispmat_gl1;
+
+[SerializeField] GameObject portal_ring_0;
+[SerializeField] GameObject portal_ring_1;
+
+[SerializeField] bool FORCERANDOM = false;
+
+#if MULTIGAMES_PORTAL
+
+Matrix4x4 m4_portal_0;
+Matrix4x4 m4_portal_1;
+Matrix4x4 m4_temp_r;
+Matrix4x4 m4_temp_t;
+Matrix4x4 m4_temp_t1;
+
+float portal_tunnel_r = 0.0f;
+Vector2 portal_tunnel_v;
+
+float portal_0_dims_x;
+float portal_0_dims_y;
+float portal_0_dims_z;
+float portal_0_dims_w;
+
+float portal_1_dims_x;
+float portal_1_dims_y;
+float portal_1_dims_z;
+float portal_1_dims_w;
+
+const float portal_radius_sqr = 0.0625f;
+float portal_radius = 0.25f;
+
+public void PortalRandomize()
+{
+	int portalid_0 = UnityEngine.Random.Range(0, portalPositions.Length);
+	int portalid_1 = UnityEngine.Random.Range(0, portalPositions.Length);
+
+	if( portalid_0 == portalid_1 )
+	{
+		portalid_1 ++;
+
+		if( portalid_1 >= portalPositions.Length )
+		{
+			portalid_1 = 0;
+		}
+	}
+
+	Transform t0 = portalPositions[ portalid_0 ];
+	Transform t1 = portalPositions[ portalid_1 ];
+
+	Vector3 delta = t1.position - t0.position;
+	portal_tunnel_v.x = delta.x;
+	portal_tunnel_v.y = delta.z;
+
+	float rot_0 = Mathf.Atan2( t0.forward.z, t0.forward.x );
+	float rot_1 = Mathf.Atan2( t1.forward.z, t1.forward.x );
+	portal_tunnel_r = rot_1 - rot_0 + Mathf.PI;
+
+	m4_temp_r = Matrix4x4.Rotate(Quaternion.AngleAxis( portal_tunnel_r*Mathf.Rad2Deg, Vector3.up ));
+	m4_temp_t = Matrix4x4.Translate(-t1.position);
+	m4_temp_t1 = Matrix4x4.Translate(t0.position);
+
+	m4_portal_0 = m4_temp_t1 * m4_temp_r * m4_temp_t;
+
+	m4_temp_r = Matrix4x4.Rotate(Quaternion.AngleAxis( -portal_tunnel_r*Mathf.Rad2Deg, Vector3.up ));
+	m4_temp_t = Matrix4x4.Translate(-t0.position);
+	m4_temp_t1 = Matrix4x4.Translate(t1.position);
+	
+	m4_portal_1 = m4_temp_t1 * m4_temp_r * m4_temp_t;
+	 
+	portal_ring_0.transform.position = t0.position;
+	portal_ring_0.transform.rotation = t0.rotation;
+	portal_ring_1.transform.position = t1.position;
+	portal_ring_1.transform.rotation = t1.rotation;
+
+	Vector4 plane0 = new Vector4( t0.forward.x, t0.forward.y, t0.forward.z, Vector3.Dot( t0.forward, t0.position ) );
+	Vector4 plane1 = new Vector4( t1.forward.x, t1.forward.y, t1.forward.z, Vector3.Dot( t1.forward, t1.position ) );
+	Vector4 px0 = new Vector4( t0.position.x, t0.position.y, t0.position.z, portal_radius_sqr );
+	Vector4 px1 = new Vector4( t1.position.x, t1.position.y, t1.position.z, portal_radius_sqr );
+
+	portal_dispmat_0_0.SetMatrix( "_ExtTrf", m4_portal_0 );
+	portal_dispmat_0_1.SetMatrix( "_ExtTrf", m4_portal_0 );
+	portal_dispmat_1_0.SetMatrix( "_ExtTrf", m4_portal_1 );
+	portal_dispmat_1_1.SetMatrix( "_ExtTrf", m4_portal_1 );
+	portal_dispmat_gl0.SetMatrix( "_ExtTrf", m4_portal_0 );
+	portal_dispmat_gl1.SetMatrix( "_ExtTrf", m4_portal_1 );
+
+	portal_dispmat_0_0.SetVector( "_Portal0", plane0 );
+	portal_dispmat_0_0.SetVector( "_Portal0_Pos", px0 );
+
+	portal_dispmat_0_1.SetVector( "_Portal0", plane0 );
+	portal_dispmat_0_1.SetVector( "_Portal0_Pos", px0 );
+
+	portal_dispmat_gl0.SetVector( "_Portal0", plane0 );
+	portal_dispmat_gl0.SetVector( "_Portal0_Pos", px0 );
+
+	portal_dispmat_1_0.SetVector( "_Portal0", plane1 );
+	portal_dispmat_1_0.SetVector( "_Portal0_Pos", px1 );
+
+	portal_dispmat_1_1.SetVector( "_Portal0", plane1 );
+	portal_dispmat_1_1.SetVector( "_Portal0_Pos", px1 );
+
+	portal_dispmat_gl1.SetVector( "_Portal0", plane1 );
+	portal_dispmat_gl1.SetVector( "_Portal0_Pos", px1 );
+
+	portal_dispmat_m.SetVector( "_Portal0", plane0 );
+	portal_dispmat_m.SetVector( "_Portal1", plane1 );
+	portal_dispmat_m.SetVector( "_Portal0_Pos", px0 );
+	portal_dispmat_m.SetVector( "_Portal1_Pos", px1 );
+
+	// Set lhand position
+	portal_0_dims_x = t0.position.x + t0.right.x * portal_radius;
+	portal_0_dims_y = t0.position.z + t0.right.z * portal_radius;
+
+	// trace vector
+	portal_0_dims_z = t0.right.x * portal_radius * -2.0f;
+	portal_0_dims_w = t0.right.z * portal_radius * -2.0f;
+
+	// Set lhand position
+	portal_1_dims_x = t1.position.x + t1.right.x * portal_radius;
+	portal_1_dims_y = t1.position.z + t1.right.z * portal_radius;
+	 
+	// trace vector
+	portal_1_dims_z = t1.right.x * portal_radius * -2.0f;
+	portal_1_dims_w = t1.right.z * portal_radius * -2.0f;
+
+	// Debug.DrawLine( new Vector3(portal_0_dims_x, 0.01f, portal_0_dims_y), new Vector3(portal_0_dims_x+portal_0_dims_z, 0.01f, portal_0_dims_y+portal_0_dims_w), Color.magenta, 10.0f );
+	// Debug.DrawLine( new Vector3(portal_1_dims_x, 0.01f, portal_1_dims_y), new Vector3(portal_1_dims_x+portal_1_dims_z, 0.01f, portal_1_dims_y+portal_1_dims_w), Color.yellow, 10.0f );
+
+	Debug.Log( delta.ToString() );
+
+}
+
+void BallPortal( int id )
+{
+	float cx, cy;
+	float c, s;
+	float bdp, u;
+
+	float ax = ball_co[id].x;
+	float ay = ball_co[id].y;
+	float az = ball_vl[id].x * FIXED_TIME_STEP;
+	float aw = ball_vl[id].y * FIXED_TIME_STEP;
+
+	// Debug.DrawLine( new Vector3(ax, 0.0f, ay), new Vector3(ax+az, 0.0f, ay+aw), Color.green );
+
+	Vector3 temp;
+
+	bdp = portal_0_dims_z * aw - portal_0_dims_w * az;
+	if( bdp > 0.0f )
+	{
+		cx = ax - portal_0_dims_x;
+		cy = ay - portal_0_dims_y;
+
+		u = ( cx * portal_0_dims_w - cy * portal_0_dims_z ) / bdp;
+		if( u >= 0.0f && u <= 1.0f )
+		{
+			u = ( cx * aw - cy * az ) / bdp;
+			if( u >= 0.0f && u <= 1.0f )
+			{
+				// Went through portal 0
+				// Make translation
+				temp = new Vector3( ball_co[id].x, 0.0f, ball_co[id].y );
+				temp = m4_portal_1.MultiplyPoint( temp );
+
+				ball_co[id].x = temp.x;
+				ball_co[id].y = temp.z;
+				
+				// Rotate velocity
+				c = Mathf.Cos( portal_tunnel_r );
+				s = Mathf.Sin( portal_tunnel_r );
+
+				cx = ball_vl[id].x;
+				cy = ball_vl[id].y;
+
+				ball_vl[id].x = c * cx - s * cy;
+				ball_vl[id].y = s * cx + c * cy;
+
+				ball_co[id] += ball_vl[id] * FIXED_TIME_STEP;
+
+				Debug.Log("hi 0");
+
+				return;
+			}
+		}
+	}
+
+	// Portal 1
+	bdp = portal_1_dims_z * aw - portal_1_dims_w * az;
+	if( bdp > 0.0f ) 
+	{
+		cx = ax - portal_1_dims_x;
+		cy = ay - portal_1_dims_y;
+
+		u = ( cx * portal_1_dims_w - cy * portal_1_dims_z ) / bdp;
+		if( u >= 0.0f && u <= 1.0f )
+		{
+			u = ( cx * aw - cy * az ) / bdp;
+			if( u >= 0.0f && u <= 1.0f )
+			{
+				// Went through portal 1
+				// Make translation
+				temp = new Vector3( ball_co[id].x, 0.0f, ball_co[id].y );
+				temp = m4_portal_0.MultiplyPoint( temp );
+
+				ball_co[id].x = temp.x;
+				ball_co[id].y = temp.z;
+				
+				// Rotate velocity
+				c = Mathf.Cos( -portal_tunnel_r );
+				s = Mathf.Sin( -portal_tunnel_r );
+
+				cx = ball_vl[id].x;
+				cy = ball_vl[id].y;
+
+				ball_vl[id].x = c * cx - s * cy;
+				ball_vl[id].y = s * cx + c * cy;
+
+				ball_co[id] += ball_vl[id] * FIXED_TIME_STEP;
+
+				Debug.Log("hi 1");
+
+				return;
+			}
+		}
+	}
+}
+
+#endif
+
 // Updates table colour target to appropriate player colour
 void UpdateTableColor( uint idsrc )
 {
@@ -342,8 +613,10 @@ void DisplaySetLocal()
 {
 	uint picker = sn_turnid ^ sn_playerxor;
 
+#if HT8B_DEBUGGER
 	FRP( FRP_YES + "(local) " + Networking.GetOwner( playerTotems[sn_turnid] ).displayName + ":" + sn_turnid + " is " + 
 		(picker == 0? "blues": "oranges") + FRP_END );
+#endif
 
 	UpdateTableColor( sn_turnid );
 	UpdateScoreCardLocal();
@@ -355,7 +628,9 @@ void DisplaySetLocal()
 // End of the game. Both with/loss
 void GameOverLocal()
 {
+#if HT8B_DEBUGGER
 	FRP( FRP_YES + "(local) Winner of match: " + Networking.GetOwner( playerTotems[sn_winnerid] ).displayName + FRP_END );
+#endif
 
 	UpdateTableColor( sn_winnerid );
 
@@ -368,7 +643,9 @@ void GameOverLocal()
 
 void OnTurnChangeLocal()
 {
+#if HT8B_DEBUGGER
 	FRP( FRP_YES + "(local) turn switch to: " + Networking.GetOwner( playerTotems[sn_turnid] ).displayName + FRP_END );
+#endif
 
 	UpdateTableColor( sn_turnid );
 
@@ -434,7 +711,10 @@ void ShowBalls( bool state )
 void NewGameLocal()
 {
 	VRCPlayerApi startPlayer = Networking.GetOwner(playerTotems[0]);
+
+#if HT8B_DEBUGGER
 	FRP( FRP_YES + "(local) " + ( startPlayer != null? startPlayer.displayName: "[null]" ) + " started a new game" + FRP_END );
+#endif
 
 	// Put names on the board
 	if( startPlayer != null )
@@ -473,9 +753,11 @@ float		cue_fdir;
 
 // Timing
 
+#if HT_QUEST
+const float MAX_DELTA = 0.075f;						// Maximum steps/frame ( 5 ish )
+#else
 const float MAX_DELTA = 0.1f;						// Maximum steps/frame ( 8 )
-const float FIXED_TIME_STEP = 0.0125f;			// time step in seconds per iteration
-const float TIME_ALPHA = 50.0f;					// (unused) physics interpolation
+#endif
 
 // Calculation constants (measurements are in meters)
 
@@ -496,13 +778,15 @@ const float MIN_VELOCITY	= 0.00005625f;				// SQUARED
 
 const float FRICTION_EFF	= 0.99f;						// How much to multiply velocity by each update
 
-// Physics memory
+#if HT_QUEST
+uint ANDROID_UNIFORM_CLOCK = 0x00u;
+uint ANDROID_CLOCK_DIVIDER = 0x8u;
+#endif
 
-Vector2[] ball_co = new Vector2[16];	// Current positions
-Vector2[] ball_og = new Vector2[16];	// Break positions
-Vector2[] ball_vl = new Vector2[16];	// Current velocities
-Vector2	 cue_avl = Vector2.zero;		// Cue ball angular velocity
-public Vector2	dkTargetPos;				// Target for desktop aiming
+#if HT_QUEST
+#else
+public Vector3	dkTargetPos;				// Target for desktop aiming
+#endif
 
 // Send ball to the gulag
 void PocketBall( int id )
@@ -737,7 +1021,11 @@ void BallSimulate( int id )
 	{
 		// Put velocity to 0
 		ball_vl[ id ] = Vector2.zero;
+
+		return;
 	}
+
+	// BallPortal( id );
 }
 
 // ( Since v0.2.0a ) Check if we can predict a collision before move update happens to improve accuracy
@@ -862,14 +1150,24 @@ Vector2 LineProject( Vector2 start, Vector2 dir, Vector2 pos )
 // Setup player's turn
 void Owner_NewTurn()
 {
-	FRP( FRP_YES + "NewTurn()" + FRP_END );
+#if MULTIGAMES_PORTAL
+	PortalRandomize();
+#endif
 
+#if HT8B_DEBUGGER
+	FRP( FRP_YES + "NewTurn()" + FRP_END );
+#endif
+
+#if !HT_QUEST
 	dk_updatetarget();
+#endif
 
 	// Fixup game state
 	if( sn_foul )
 	{
+		#if HT8B_DEBUGGER
 		FRP( FRP_LOW + "Game state fixup" + FRP_END );
+		#endif
 
 		// Allow repositioning anywhere
 		isReposition = true;
@@ -908,7 +1206,9 @@ void Owner_NewTurn()
 
 void SimEnd_Win( uint winner )
 {
+	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + " -> GAMEOVER" + FRP_END );
+	#endif
 
 	sn_gameover = true;
 	sn_winnerid = winner;
@@ -921,7 +1221,9 @@ void SimEnd_Win( uint winner )
 
 void SimEnd_Pass()
 {
+	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + " -> PASS" + FRP_END );
+	#endif
 
 	NetPack( sn_turnid ^ 0x1U );
 	NetRead();
@@ -929,7 +1231,9 @@ void SimEnd_Pass()
 
 void SimEnd_Foul()
 {
+	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + " -> FOUL" + FRP_END );
+	#endif
 
 	sn_foul = true;
 
@@ -938,7 +1242,9 @@ void SimEnd_Foul()
 
 void SimEnd_Continue()
 {
+	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + " -> COTNINUE" + FRP_END );
+	#endif
 
 	// Close table if it was open
 	if( sn_open )
@@ -969,13 +1275,17 @@ void SimEnd()
 {
 	sn_simulating = false;
 
+	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + "(local) SimEnd()" + FRP_END );
+	#endif
 
 	// TODO: split state checking into more manageable chunks
 	if( Networking.GetOwner( this.gameObject ) == Networking.LocalPlayer )
 	{
 		// Owner state checks
+		#if HT8B_DEBUGGER
 		FRP( FRP_LOW + "Post-move state checking" + FRP_END );
+		#endif
 
 		uint bmask = 0xFFFCU;
 		uint emask = 0x0U;
@@ -1044,7 +1354,10 @@ void SimEnd()
 	// Check if there was a network update on hold
 	if( sn_updatelock )
 	{
+		#if HT8B_DEBUGGER
 		FRP( FRP_LOW + "Update was waiting, executing now" + FRP_END );
+		#endif
+
 		sn_updatelock = false;
 
 		NetRead();
@@ -1118,13 +1431,15 @@ public void EndHit()
 	sn_armed = false;
 }
 
+#if !HT_QUEST
 void dk_updatetarget()
 {
 	// Update desktop targets
-	dkTargetPos = ball_co[ 0 ];
+	dkTargetPos = this.transform.TransformPoint( new Vector3( ball_co[ 0 ].x, 0.0f, ball_co[ 0 ].y ) );
 	
 	gripControllers[ sn_turnid ].dk_cpytarget();
 }
+#endif
 
 public void PosFinalize()
 {
@@ -1133,7 +1448,9 @@ public void PosFinalize()
 		isReposition = false;
 		markerObj.SetActive( false );
 
+#if !HT_QUEST
 		dk_updatetarget();
+#endif
 
 		// Save out position to remote clients
 		NetPack( sn_turnid );
@@ -1252,15 +1569,19 @@ private void Update()
 					sn_armed = false;
 					sn_permit = false;
 
+					#if HT8B_DEBUGGER
 					FRP( FRP_LOW + "Commiting changes" + FRP_END );
+					#endif
 
 					// Commit changes
 					sn_simulating = true;
 					sn_pocketed_prv = sn_pocketed;
 
+#if !HT_QUEST
 					// Remove desktop locks
 					gripControllers[0].dk_endhit();
 					gripControllers[1].dk_endhit();
+#endif
 
 					NetPack( sn_turnid );
 					NetRead();
@@ -1279,9 +1600,8 @@ private void Update()
 				devhit.transform.localPosition = RaySphere_output;
 				guidefspin.transform.localScale = new Vector3( RaySphere_output.y * 33.3333333333f, 1.0f, 1.0f );
 
-				Vector3 scuffdir = ( ball0ws - RaySphere_output ).normalized * 0.5f;
+				Vector3 scuffdir = ( ball0ws - RaySphere_output ).normalized * 0.2f;
 				cue_shotdir = new Vector2( cue_vdir.x, cue_vdir.z );
-
 				cue_shotdir += new Vector2( scuffdir.x, scuffdir.z );
 				cue_shotdir = cue_shotdir.normalized;
 
@@ -1305,17 +1625,36 @@ private void Update()
 	if( sn_gameover )
 	{
 		// Flashing if we won
+		#if !HT_QUEST
 		tableCurrentColour = tableSrcColour * (Mathf.Sin( Time.timeSinceLevelLoad * 3.0f) * 0.5f + 1.0f);
+		#endif
 		
 		infBaseTransform.transform.localPosition = new Vector3( 0.0f, Mathf.Sin( Time.timeSinceLevelLoad ) * 0.1f, 0.0f );
 		infBaseTransform.transform.Rotate( Vector3.up, 90.0f * Time.deltaTime );
 	}
 	else
 	{
+		#if !HT_QUEST
 		tableCurrentColour = Color.Lerp( tableCurrentColour, tableSrcColour, Time.deltaTime * 3.0f );
+		#else
+
+		// Run uniform updates at a slower rate on android (/8)
+		ANDROID_UNIFORM_CLOCK ++;
+
+		if( ANDROID_UNIFORM_CLOCK >= ANDROID_CLOCK_DIVIDER )
+		{
+			tableCurrentColour = Color.Lerp( tableCurrentColour, tableSrcColour, Time.deltaTime * 24.0f );
+			tableRenderer.sharedMaterial.SetColor( uniform_tablecolour, tableCurrentColour );
+
+			ANDROID_UNIFORM_CLOCK = 0x00u;
+		}
+
+		#endif
 	}
 
+	#if !HT_QUEST
 	tableRenderer.sharedMaterial.SetColor( uniform_tablecolour, tableCurrentColour );
+	#endif
 
 	// Intro animation
 	if( introAminTimer > 0.0f )
@@ -1348,6 +1687,14 @@ private void Update()
 			balls_render[i].transform.localScale = new Vector3(aitime, aitime, aitime);
 		}
 	}
+
+	#if MULTIGAMES_PORTAL
+	if( FORCERANDOM )
+	{
+		PortalRandomize();
+		FORCERANDOM = false;
+	}
+	#endif
 }
 
 // Copy current values to previous values, no memcpy here >:(
@@ -1374,7 +1721,9 @@ private void Start()
 {
 	sn_copyprv();
 
+	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + "Starting" + FRP_END );
+	#endif
 
 #if USE_INT_UNIFORMS
 
@@ -1418,7 +1767,9 @@ private void Start()
 // TODO: Merge this with NewGame()
 public void SetupBreak()
 {
+	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + "SetupBreak()" + FRP_END );
+	#endif
 
 	sn_pocketed = 0x00;
 	sn_pocketed_prv = 0x00;
@@ -1441,7 +1792,9 @@ public void SetupBreak()
 
 public void SendDebugImpulse()
 {
+	#if HT8B_DEBUGGER
 	FRP( "Resetting" );
+	#endif
 
 	SetupBreak();
 
@@ -1476,15 +1829,19 @@ public void NewGame()
 	// between the two sticks. Therefore extra checks are done to make
 	// sure this only runs predictably
 
+	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + "(local) NewGame()" + FRP_END );
+	#endif
 
 	if( Networking.GetOwner( playerTotems[0] ) == Networking.LocalPlayer )
 	{
 		// Check if game in progress
 		if( sn_gameover )
 		{
+			#if HT8B_DEBUGGER
 			FRP( FRP_YES + "Starting new game" + FRP_END );
-			
+			#endif
+
 			Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
 
 			sn_gameid ++;
@@ -1505,7 +1862,9 @@ public void NewGame()
 		}
 		else
 		{
+			#if HT8B_DEBUGGER
 			FRP( FRP_WARN + "game in progress" + FRP_END );
+			#endif
 		}
 	}
 	else
@@ -1521,7 +1880,9 @@ public void ForceEndGame()
 	if( Networking.LocalPlayer == Networking.GetOwner( playerTotems[0] ) ||
 		Networking.LocalPlayer == Networking.GetOwner( playerTotems[1] ))
 	{
+		#if HT8B_DEBUGGER
 		FRP( FRP_WARN + "Ending game early" + FRP_END );
+		#endif
 
 		Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
 
@@ -1540,7 +1901,9 @@ public void ForceEndGame()
 	}
 	else
 	{
+		#if HT8B_DEBUGGER
 		FRP( FRP_ERR + "Reset is availible to: " + Networking.GetOwner( playerTotems[0] ).displayName + " and " + Networking.GetOwner( playerTotems[1] ).displayName + FRP_END );
+		#endif
 	}
 }
 
@@ -1549,55 +1912,56 @@ public void ForceEndGame()
 
 const float I16_MAXf = 32767.0f;
 
-// 2 char string from unsigned short
-string EncodeUint16( ushort sh )
+void EncodeUint16( int pos, ushort v ) 
 {
-	return "" + (char)sh;
+	net_data[ pos ] = (byte)(v & 0xff);
+	net_data[ pos + 1 ] = (byte)(((uint)v >> 8) & 0xff);
+}
+
+ushort DecodeUint16( int pos ) 
+{
+	return (ushort)(net_data[pos] | (((uint)net_data[pos+1]) << 8));
 }
 
 // 4 char string from Vector2. Encodes floats in: [ -range, range ] to 0-65535
-string Encodev2( Vector2 vec, float range )
+void Encodev2( int pos, Vector2 vec, float range )
 {
-	ushort x = (ushort)((vec.x / range) * I16_MAXf + I16_MAXf );
-	ushort y = (ushort)((vec.y / range) * I16_MAXf + I16_MAXf );
-
-	return EncodeUint16(x) + EncodeUint16(y);
-}
-
-// 2 chars at index to ushort
-ushort DecodeUint16( char[] arr, int start )
-{
-	return (ushort)arr[start];
+	EncodeUint16( pos, (ushort)((vec.x / range) * I16_MAXf + I16_MAXf ) );
+	EncodeUint16( pos + 2, (ushort)((vec.y / range) * I16_MAXf + I16_MAXf ) );
 }
 
 // Decode 4 chars at index to Vector2. Decodes from 0-65535 to [ -range, range ]
-Vector2 Decodev2( char[] arr, int start, float range )
+Vector2 Decodev2( int start, float range )
 {
-	float x = (((float)DecodeUint16(arr, start) - I16_MAXf) / I16_MAXf) * range;
-	float y = (((float)DecodeUint16(arr, start + 1) - I16_MAXf) / I16_MAXf) * range;
+	ushort _x = DecodeUint16( start );
+	ushort _y = DecodeUint16( start + 2 );
+
+	float x = ((_x - I16_MAXf) / I16_MAXf) * range;
+	float y = ((_y - I16_MAXf) / I16_MAXf) * range;
 		
-	return new Vector2(x,y);
+	return new Vector2( x, y );
 } 
-	 
+
 // Encode all data of game state into netstr
 public void NetPack( uint _turnid )
 {
-	string enc = "";
 	sn_packetid ++;
+
+	// Garuntee array size by reallocating.. because c#
+	net_data = new byte[0x52];
 
 	// positions
 	for ( int i = 0; i < 16; i ++ )
 	{
-		string coded = Encodev2(ball_co[i], 2.5f);
-		enc += coded;
+		Encodev2( i * 4, ball_co[ i ], 2.5f );
 	}
 
 	// Cue ball velocity last
-	enc += Encodev2( ball_vl[0], 50.0f );
-	enc += Encodev2( cue_avl, 50.0f );
+	Encodev2( 0x40, ball_vl[0], 50.0f );
+	Encodev2( 0x44, cue_avl, 50.0f );
 
 	// Encode pocketed imformation
-	enc += EncodeUint16( (ushort)(sn_pocketed & 0x0000FFFFU) );
+	EncodeUint16( 0x48, (ushort)(sn_pocketed & 0x0000FFFFU) );
 
 	// Game state
 	uint flags = 0x0U;
@@ -1610,14 +1974,16 @@ public void NetPack( uint _turnid )
 	flags |= sn_winnerid << 6;
 	if( sn_permit ) flags |= 0x80U;
 
-	enc += EncodeUint16( (ushort)flags );
-	enc += EncodeUint16( sn_packetid );
-	enc += EncodeUint16( sn_gameid );
-	enc += EncodeUint16( sn_colourid );
+	EncodeUint16( 0x4A, (ushort)flags );
+	EncodeUint16( 0x4C, sn_packetid );
+	EncodeUint16( 0x4E, sn_gameid );
+	EncodeUint16( 0x50, sn_colourid );
 
-	netstr = enc;
+	netstr = Convert.ToBase64String( net_data, Base64FormattingOptions.None );
 
+	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + "NetPack()" + FRP_END );
+	#endif
 }
 
 // Decode networking string
@@ -1625,21 +1991,34 @@ public void NetPack( uint _turnid )
 public void NetRead()
 {
 	// CHECK ERROR ===================================================================================================
-	FRP( FRP_LOW + netstr_hex() + FRP_END );
+	#if HT8B_DEBUGGER
+	FRP( FRP_LOW + "incoming base64: " + netstr + FRP_END );
+	#endif
 
-	if( netstr.Length < 39 )
-	{
+	byte[] in_data = Convert.FromBase64String( netstr );
+	if( in_data.Length < 0x52 ) {
+			
+		#if HT8B_DEBUGGER
 		FRP( FRP_WARN + "Sync string too short for decode, skipping\n" + FRP_END );
-		return;
+		#endif
+
+		return; 
 	}
 
-	char[] arr = netstr.ToCharArray();
-		
+	net_data = in_data;
+
+	#if HT8B_DEBUGGER
+	FRP( FRP_LOW + netstr_hex() + FRP_END );
+	#endif
+
 	// Throw out updates that are possible errournous
-	ushort nextid = DecodeUint16( arr, 0x26 );
+	ushort nextid = DecodeUint16( 0x4C );
 	if( nextid < sn_packetid )
 	{
+		#if HT8B_DEBUGGER
 		FRP( FRP_WARN + "Packet ID was old ( " + nextid + " < " + sn_packetid + " ). Throwing out update" + FRP_END );
+		#endif
+
 		return;
 	}
 	sn_packetid = nextid;
@@ -1648,19 +2027,19 @@ public void NetRead()
 	sn_copyprv();
 
 	// Pocketed information
-	sn_pocketed = DecodeUint16( arr, 0x24 );
-
 	// Ball positions, reset velocity
 	for( int i = 0; i < 16; i ++ )
 	{
 		ball_vl[i] = Vector2.zero;
-		ball_co[i] = Decodev2( arr, i * 2, 2.5f );
+		ball_co[i] = Decodev2( i * 4, 2.5f );
 	}
 
-	ball_vl[0] = Decodev2( arr, 0x20, 50.0f );
-	cue_avl = Decodev2( arr, 0x22, 50.0f );
+	ball_vl[0] = Decodev2( 0x40, 50.0f );
+	cue_avl = Decodev2( 0x44, 50.0f );
 
-	uint gamestate = DecodeUint16( arr, 0x25 );
+	sn_pocketed = DecodeUint16( 0x48 );
+
+	uint gamestate = DecodeUint16( 0x4A );
 	sn_simulating = (gamestate & 0x1U) == 0x1U;
 	sn_turnid = (gamestate & 0x2U) >> 1;
 	sn_foul = (gamestate & 0x4U) == 0x4U;
@@ -1670,8 +2049,8 @@ public void NetRead()
 	sn_winnerid = (gamestate & 0x40U) >> 6;
 	sn_permit = (gamestate & 0x80U) == 0x80U;
 
-	sn_gameid = DecodeUint16( arr, 0x27 );
-	sn_colourid = DecodeUint16( arr, 0x28 );
+	sn_gameid = DecodeUint16( 0x4E );
+	sn_colourid = DecodeUint16( 0x50 );
 
 	// Events ==========================================================================================================
 
@@ -1696,7 +2075,9 @@ public void NetRead()
 	{
 		// EV: 2
 
+		#if HT8B_DEBUGGER
 		FRP( FRP_LOW + "Ownership changed" + FRP_END );
+		#endif
 
 		// Fullfil ownership transfer early
 		// Technically this is not needed with auto-switch mechanism, however its currently
@@ -1708,12 +2089,16 @@ public void NetRead()
 
 		if( Networking.GetOwner( playerTotems[ sn_turnid ] ) == Networking.LocalPlayer )
 		{
+			#if HT8B_DEBUGGER
 			FRP( FRP_YES + "Transfered to local" + FRP_END );
+			#endif
 
 			if( sn_simulating )
 			{
 				// In THEORY this should never ever be hit, but there might be an edge case
+				#if HT8B_DEBUGGER
 				FRP( FRP_ERR + "Remote simulating when ownership transfer attempt was made... script is deadlocked! contact harry!" + FRP_END );
+				#endif
 			}
 			else
 			{
@@ -1730,7 +2115,9 @@ public void NetRead()
 		}
 		else
 		{
+			#if HT8B_DEBUGGER
 			FRP( FRP_LOW + "Transfered to remote" + FRP_END );
+			#endif
 		}
 
 		OnTurnChangeLocal();
@@ -1763,12 +2150,11 @@ public void NetRead()
 
 string netstr_hex()
 {
-	char[] arr = netstr.ToCharArray();
 	string str = "";
 
-	for( int i = 0; i < netstr.Length; i ++ )
+	for( int i = 0; i < net_data.Length; i += 2 )
 	{
-		ushort v = DecodeUint16( arr, i );
+		ushort v = DecodeUint16( i );
 		str += v.ToString("X4");
 	}
 
@@ -1780,7 +2166,9 @@ public override void OnDeserialization()
 {
 	if( !string.Equals( netstr, netstr_prv ) )
 	{
+		#if HT8B_DEBUGGER
 		FRP( FRP_LOW + "OnDeserialization() :: netstr update" + FRP_END );
+		#endif
 
 		netstr_prv = netstr;
 
@@ -1788,7 +2176,10 @@ public override void OnDeserialization()
 		// are settled by the client
 		if( sn_simulating )
 		{
+			#if HT8B_DEBUGGER
 			FRP( FRP_WARN + "local simulation is still running, the network update will occur after completion" + FRP_END );
+			#endif
+
 			sn_updatelock = true;
 		}
 		else
@@ -1798,6 +2189,8 @@ public override void OnDeserialization()
 		}
 	}
 }
+
+#if !HT_QUEST
 
 const int FRP_MAX = 32;
 int FRP_LEN = 0;
@@ -1846,5 +2239,7 @@ void FRP( string ln )
 
 	ltext.text = output;
 }
+
+#endif
 
 }
