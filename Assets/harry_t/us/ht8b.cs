@@ -177,6 +177,8 @@ const string FRP_END =	"</color>";
 
 [SerializeField] Transform[]	portalPositions;
 
+VRCPlayerApi[] api_players = new VRCPlayerApi[2];
+
 // Audio Components
 AudioSource aud_main;
 
@@ -203,11 +205,13 @@ uint  sn_playerxor	= 0x00;		// 19:4 (0x10)		What colour the players have chosen
 bool  sn_gameover		= true;		// 19:5 (0x20)		Game is complete
 uint  sn_winnerid		= 0x00U;		// 19:6 (0x40)		Who won the game if sn_gameover is set
 public bool	sn_permit= false;		// 19:7 (0x80)		Permission for player to play
+uint	sn_gamemode		= 0;			// 19:8 (0x700)	Gamemode ID ( 3 bit, 0-7 )
 
-// Ruleset flags
-bool	sn_rs_call8		= false;		//	19:8 (0x100)	Call 8 ball pocket
-bool	sn_rs_call		= false;		//	19:9 (0x200)	Call every pocket
-bool	sn_rs_anyf		= false;		// 19:10(0x400)	Any ball can be hit first by cue ball
+											// 19:11 (0x800)
+											// 19:12 (0x1000)
+											// 19:13 (0x2000)
+											// 19:14 (0x4000)
+											// 19:15 (0x8000)
 
 ushort sn_packetid	= 0;			// 20 Current packet number, used for locking updates so we dont accidently go back.
 											//    this behaviour was observed on some long connections so its necessary
@@ -286,7 +290,7 @@ public ushort in_coloursetid = 0;
 
 public void PushColourSet()
 {
-	if( Networking.GetOwner( playerTotems[0] ) == Networking.LocalPlayer || Networking.GetOwner( playerTotems[1] ) == Networking.LocalPlayer )
+	if( api_players[ 0 ] == Networking.LocalPlayer || api_players[ 1 ] == Networking.LocalPlayer )
 	{
 		sn_colourid = in_coloursetid;
 		UpdateColourSources();
@@ -614,7 +618,7 @@ void DisplaySetLocal()
 	uint picker = sn_turnid ^ sn_playerxor;
 
 #if HT8B_DEBUGGER
-	FRP( FRP_YES + "(local) " + Networking.GetOwner( playerTotems[sn_turnid] ).displayName + ":" + sn_turnid + " is " + 
+	FRP( FRP_YES + "(local) " + api_players[ sn_turnid ].displayName + ":" + sn_turnid + " is " + 
 		(picker == 0? "blues": "oranges") + FRP_END );
 #endif
 
@@ -629,12 +633,12 @@ void DisplaySetLocal()
 void GameOverLocal()
 {
 #if HT8B_DEBUGGER
-	FRP( FRP_YES + "(local) Winner of match: " + Networking.GetOwner( playerTotems[sn_winnerid] ).displayName + FRP_END );
+	FRP( FRP_YES + "(local) Winner of match: " + api_players[ sn_winnerid ].displayName + FRP_END );
 #endif
 
 	UpdateTableColor( sn_winnerid );
 
-	infText.text = Networking.GetOwner(playerTotems[sn_winnerid]).displayName + " wins!";
+	infText.text = api_players[ sn_winnerid ].displayName + " wins!";
 	infBaseTransform.SetActive( true );
 	infHowToStart.SetActive( true );
 
@@ -644,7 +648,7 @@ void GameOverLocal()
 void OnTurnChangeLocal()
 {
 #if HT8B_DEBUGGER
-	FRP( FRP_YES + "(local) turn switch to: " + Networking.GetOwner( playerTotems[sn_turnid] ).displayName + FRP_END );
+	FRP( FRP_YES + "(local) turn switch to: " + api_players[ sn_turnid ].displayName + FRP_END );
 #endif
 
 	UpdateTableColor( sn_turnid );
@@ -719,8 +723,11 @@ void NewGameLocal()
 	// Put names on the board
 	if( startPlayer != null )
 	{
-		playerNames[0].text = Networking.GetOwner(playerTotems[0]).displayName;
-		playerNames[1].text = Networking.GetOwner(playerTotems[1]).displayName;
+		api_players[ 0 ] = startPlayer;
+		api_players[ 1 ] = Networking.GetOwner( playerTotems[1] );
+
+		playerNames[ 0 ].text = api_players[ 0 ].displayName;
+		playerNames[ 1 ].text = api_players[ 1 ].displayName;
 	}
 
 	//tableSrcColour = tableColorWhite;
@@ -764,6 +771,8 @@ const float MAX_DELTA = 0.1f;						// Maximum steps/frame ( 8 )
 const float TABLE_WIDTH		= 1.0668f;					// horizontal span of table
 const float TABLE_HEIGHT	= 0.6096f;					// vertical span of table
 const float BALL_DIAMETRE	= 0.06f;						// width of ball
+const float BALL_PL_X		= 0.03f;						// break placement X
+const float BALL_PL_Y		= 0.05196152422f;			// Break placement Y
 const float BALL_1OR			= 16.66666666666666f;	// 1 over ball radius
 const float BALL_RSQR		= 0.0009f;					// ball radius squared
 const float BALL_DSQR		= 0.0036f;					// ball diameter squared
@@ -794,7 +803,7 @@ void PocketBall( int id )
 	uint total = 0U;
 
 	// Get total for X positioning
-	for( int i = 0; i < 16; i ++ )
+	for( int i = 1; i < 16; i ++ )
 	{
 		total += (sn_pocketed >> i) & 0x1U;
 	}
@@ -821,7 +830,7 @@ void PocketBall( int id )
 }
 
 // TODO: Inline
-bool BallInPlay( int id )
+bool _BallInPlay( int id )
 {
 	return ((sn_pocketed >> id) & 0x1U) == 0x00U;
 }
@@ -829,9 +838,6 @@ bool BallInPlay( int id )
 // Check pocket condition
 void BallPockets( int id )
 {
-	if( !BallInPlay( id ) )
-		return;
-
 	float zy, zx;
 	Vector2 A;
 
@@ -875,9 +881,6 @@ bool CueContacting()
 // TODO: inline this
 void BallEdges( int id )
 {
-	if( !BallInPlay( id ) )
-		return;
-
 	float zy, zx, zz, zw, d, k, i, j, l, r;
 	Vector2 A, N;
 
@@ -974,10 +977,14 @@ void BallSimulate( int id )
 	if( id > 0 ) 
 		balls_render[ id ].transform.Rotate( new Vector3( mov_delta.y, 0.0f, -mov_delta.x ) / mov_mag, mov_mag * BALL_1OR * Mathf.Rad2Deg, Space.World );
 
+	uint ball_bit = 0x1U << id;
+
 	// ball/ball collisions
 	for( int i = id+1; i < 16; i++ )
 	{
-		if( !BallInPlay( i ) )
+		ball_bit <<= 1;
+
+		if( (ball_bit & sn_pocketed) != 0U )
 			continue;
 
 		Vector2 delta = ball_co[ i ] - ball_co[ id ];
@@ -1043,10 +1050,14 @@ bool Cue_PredictiveCollide()
 	int minid = 0;
 	float mins = 0;
 
+	uint ball_bit = 0x1U;
+
 	// Loop balls look for collisions
 	for( int i = 1; i < 16; i ++ )
 	{
-		if( !BallInPlay( i ) )
+		ball_bit <<= 1;
+
+		if( (ball_bit & sn_pocketed) != 0U )
 			continue;
 
 		h = ball_co[ i ] - ball_co[ 0 ];
@@ -1369,8 +1380,10 @@ void PhysicsUpdate()
 {
 	ballsMoving = false;
 
+	uint ball_bit = 0x1U;
+
 	// Cue angular velocity
-	if( (sn_pocketed & 0x1) == 0 )
+	if( (sn_pocketed & 0x1U) == 0 )
 	{
 		cue_avl *= 0.96f;
 		ball_vl[0] += cue_avl * FIXED_TIME_STEP;
@@ -1387,7 +1400,9 @@ void PhysicsUpdate()
 	// Run main simulation / inter-ball collision
 	for( int i = 1; i < 16; i ++ )
 	{
-		if( BallInPlay( i ) )
+		ball_bit <<= 1;
+
+		if( (ball_bit & sn_pocketed) == 0U )
 		{
 			ball_co[ i ] += ball_vl[ i ] * FIXED_TIME_STEP;
 			
@@ -1406,16 +1421,26 @@ void PhysicsUpdate()
 		return;
 	}
 
+	ball_bit = 0x1U;
+
 	// Run edge collision
 	for( int i = 0; i < 16; i ++ )
 	{
-		BallEdges( i );
+		if( (ball_bit & sn_pocketed ) == 0U )
+			BallEdges( i );
+		
+		ball_bit <<= 1;
 	}
+
+	ball_bit = 0x1U;
 
 	// Run triggers
 	for( int i = 0; i < 16; i ++ )
 	{
-		BallPockets( i );
+		if( (ball_bit & sn_pocketed ) == 0U )
+			BallPockets( i );
+
+		ball_bit <<= 1;
 	}
 }
 
@@ -1710,9 +1735,6 @@ void sn_copyprv()
 	sn_gameover_prv = sn_gameover;
 	sn_winnerid_prv = sn_winnerid;
 	sn_permit_prv = sn_permit;
-	sn_rs_call8_prv = sn_rs_call8;
-	sn_rs_call_prv = sn_rs_call;
-	sn_rs_anyf_prv = sn_rs_anyf;
 	sn_gameid_prv = sn_gameid;
 	sn_colourid_prv = sn_colourid;
 }
@@ -1786,6 +1808,11 @@ public void SetupBreak()
 		ball_co[ i ] = ball_og[ i ];
 		ball_vl[ i ] = Vector2.zero;
 	}
+
+	// Start at spot
+	// Standard 8 Ball setup
+	//for( int i = 0; i < )
+
 
 	NewGameLocal();
 }
@@ -2087,7 +2114,7 @@ public void NetRead()
 		//
 		// TODO: Polish the auto-yoink system.
 
-		if( Networking.GetOwner( playerTotems[ sn_turnid ] ) == Networking.LocalPlayer )
+		if( api_players[ sn_turnid ] == Networking.LocalPlayer )
 		{
 			#if HT8B_DEBUGGER
 			FRP( FRP_YES + "Transfered to local" + FRP_END );
@@ -2226,7 +2253,7 @@ void FRP( string ln )
 		"<color=\"#95a2b8\">sim(</color> <color=\"#4287F5\">ACTIVE</color> <color=\"#95a2b8\">)</color> ":
 		"<color=\"#95a2b8\">sim(</color> <color=\"#678AC2\">PAUSED</color> <color=\"#95a2b8\">)</color> ";
 
-	VRCPlayerApi currentOwner = Networking.GetOwner(playerTotems[sn_turnid]);
+	VRCPlayerApi currentOwner = api_players[ sn_turnid ];
 	output += "<color=\"#95a2b8\">player(</color> <color=\"#4287F5\">"+ (currentOwner != null? currentOwner.displayName: "[null]") + ":" + sn_turnid + "</color> <color=\"#95a2b8\">)</color>";
 
 	output += "\n---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n";
