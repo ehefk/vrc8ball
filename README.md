@@ -20,7 +20,7 @@ Cue:
 
 
 ### For creators:
-Status: no stable prefab build released currently. eta: **unkown**, development is blocked by udon limitations preventing fixing bug
+Status: no stable prefab build released currently. eta: like a week or so
 
 The Releases page will include core art assets and game scripts, and can be put in your own world. Credit is not required and everything is licensed under gpl 3.0. All content including art was created by myself.
 
