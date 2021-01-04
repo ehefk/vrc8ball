@@ -24,6 +24,7 @@
 					0.3.7a	-	Quest support
 					0.3.8a	-	Switched network string to base64 encoded
 								-	Changed initial break setup
+					1.0.0		-	
 
  Networking Model Information:
 	
@@ -86,10 +87,14 @@
 												| 5		| 0x20	| sn_gameover		|
 												| 6		| 0x40	| sn_winnerid		|
 												| 7		| 0x80	| sn_permit			|
+												| 8-10	| 0x700	| sn_gamemode		|
+												| 11-12	| 0x1800 | sn_colourset		|
+												| 13-14	| 0x6000 | sn_timer			|
+												| 15		| 0x8000 | sn_allowteams	|
 												
 	[ 0x4C  ]	packet #					uint16
 	[ 0x4E  ]	gameid					uint16
-	[ 0x50  ]	colourset id			uint16
+	[ 0x50  ]	<reserved>				uint16
 
  Physics Implementation:
 	
@@ -133,6 +138,7 @@
 #endif
 
 //#define MULTIGAMES_PORTAL
+//#define COMPILE_FUNC_TESTS
 
 using UdonSharp;
 using UnityEngine;
@@ -149,45 +155,57 @@ const string FRP_WARN = "<color=\"#DEC521\">";
 const string FRP_YES =	"<color=\"#69D128\">";
 const string FRP_END =	"</color>";
 
-[SerializeField] GameObject[]	balls_render;
-[SerializeField] public GameObject cuetip;
-[SerializeField] GameObject	guideline;
-[SerializeField] GameObject	guidefspin;
-[SerializeField] GameObject	devhit;
-[SerializeField] Text			ltext;
+// Other behaviours
+[SerializeField]			ht8b_menu		menuController;
+[SerializeField]			ht8b_cue[]		gripControllers;
 
-[SerializeField] Vector2		extraGravy;
-[SerializeField] GameObject[] playerTotems;
-[SerializeField] GameObject[] cueTips;
-[SerializeField] Text[]			playerNames;
-[SerializeField] Renderer		scoreCardRenderer;
-[SerializeField] GameObject	gametable;
-[SerializeField] Renderer		tableRenderer;
-[SerializeField] GameObject	infBaseTransform;
-[SerializeField] Text			infText;
-[SerializeField] GameObject	markerObj;
-[SerializeField] Renderer		markerRender;
-[SerializeField] GameObject	infHowToStart;
-[SerializeField] Renderer[]	cueRenderers;
-[SerializeField] Texture[]		textureSets;
-[SerializeField] Material		ballMaterial;
-[SerializeField] Material[]	CueGripMaterials;
-[SerializeField] ht8b_cue[]	gripControllers;
-[SerializeField] Material		guidelineMat;
+// GameObjects
+[SerializeField] public GameObject[]	balls_render;
+[SerializeField] public GameObject		cuetip;
+[SerializeField]			GameObject		guideline;
+[SerializeField]			GameObject		guidefspin;
+[SerializeField]			GameObject		devhit;
+[SerializeField]			GameObject[]	playerTotems;
+[SerializeField]			GameObject[]	cueTips;
+[SerializeField]			GameObject		gametable;
+[SerializeField]			GameObject		infBaseTransform;
+[SerializeField]			GameObject		markerObj;
+[SerializeField]			GameObject		infHowToStart;
+[SerializeField]			GameObject		marker9ball;
+[SerializeField]			GameObject		tableoverlayUI;
+[SerializeField]			GameObject		fxColliderBase;
 
-[SerializeField] Transform[]	portalPositions;
+// Texts
+[SerializeField]			Text				ltext;
+[SerializeField]			Text[]			playerNames;
+[SerializeField]			Text				infText;
 
-VRCPlayerApi[] api_players = new VRCPlayerApi[2];
+// Renderers
+[SerializeField] public	Renderer			scoreCardRenderer;
+[SerializeField]			Renderer[]		cueRenderers;
+
+// Materials
+[SerializeField]			Material			guidelineMat;
+[SerializeField] public Material			ballMaterial;
+[SerializeField]			Material[]		CueGripMaterials;
+[SerializeField] public Material			tableMaterial;
+[SerializeField]			Material			markerMaterial;
+
+[SerializeField] public Texture[]		textureSets;
+
+// Audio
+[SerializeField]			AudioClip		snd_Intro;
+[SerializeField]			AudioClip		snd_Sink;
+[SerializeField]			AudioClip[]		snd_Hits;
+[SerializeField]			AudioClip		snd_NewTurn; 
+
+// Portal gamemode
+[SerializeField]			Transform[]		portalPositions;
 
 // Audio Components
 AudioSource aud_main;
 
-[SerializeField] AudioClip		snd_Intro;
-[SerializeField] AudioClip		snd_Sink;
-[SerializeField] AudioClip[]	snd_Hits;
-[SerializeField] AudioClip		snd_NewTurn; 
-
-// REGION GAME STATE
+// GAME STATE
 // =========================================================================================================================
 
 [UdonSynced]	private string netstr;		// dumpster fire
@@ -204,20 +222,28 @@ bool  sn_open			= true;		// 19:3 (0x08)		Is the table open?
 uint  sn_playerxor	= 0x00;		// 19:4 (0x10)		What colour the players have chosen
 bool  sn_gameover		= true;		// 19:5 (0x20)		Game is complete
 uint  sn_winnerid		= 0x00U;		// 19:6 (0x40)		Who won the game if sn_gameover is set
-public bool	sn_permit= false;		// 19:7 (0x80)		Permission for player to play
-uint	sn_gamemode		= 0;			// 19:8 (0x700)	Gamemode ID ( 3 bit, 0-7 )
 
-											// 19:11 (0x800)
-											// 19:12 (0x1000)
-											// 19:13 (0x2000)
-											// 19:14 (0x4000)
-											// 19:15 (0x8000)
+[HideInInspector]
+public bool	sn_permit= false;		// 19:7 (0x80)		Permission for player to play
+
+// Modifiable -- ht8b_menu.cs
+
+[HideInInspector] 
+
+#if COMPILE_FUNC_TESTS
+public
+#endif
+
+									uint sn_gamemode	= 0;	// 19:8 (0x700)	Gamemode ID 3 bit	{ 0: 8 ball, 1: 9 ball, 2+: undefined }
+[HideInInspector] public	uint sn_colourset	= 0;	// 19:11 (0x1800) Colourset 2 bit	{ 0: blue/orange, 1: pink/green, 2: UK Solids, 3: USA Standard }
+[HideInInspector] public	uint sn_timer		= 0;	// 19:13 (0x6000)	Timer ID 2 bit		{ 0: inf, 1: 30s, 2: 60s, 3: undefined }
+									bool sn_allowteams = false; // 19:15 (0x8000)	Teams on/off (1 bit)
+// ----------------
 
 ushort sn_packetid	= 0;			// 20 Current packet number, used for locking updates so we dont accidently go back.
 											//    this behaviour was observed on some long connections so its necessary
 ushort sn_gameid		= 0;			// 21 Game number
-
-ushort sn_colourid	= 0;			// 22 Colour set ID
+ushort sn_gmspec		= 0;			// 22 Game mode specific information
 
 // Cannot making a struct in C#, therefore values are duplicated
 
@@ -234,12 +260,17 @@ bool sn_rs_call8_prv;
 bool sn_rs_call_prv;
 bool sn_rs_anyf_prv;
 ushort sn_gameid_prv;
-ushort sn_colourid_prv;
+uint sn_gamemode_prv;
+uint sn_colourset_prv;
+uint sn_timer_prv;
+bool sn_inmenu_prv;
 
 // Local gamestates
+[HideInInspector]
 public bool	sn_armed	= false;
 bool	sn_updatelock	= false;		// We are waiting for our local simulation to finish, before we unpack data
 int	sn_firsthit		= 0;			// The first ball to be hit by cue ball
+bool	sn_oursim		= false;		// If the simulation was initiated by us, only set from update
 
 byte	sn_wins0			= 0;			// Wins for player 0 (unused)
 byte	sn_wins1			= 0;			// Wins for player 1 (unused)
@@ -251,73 +282,146 @@ bool	ballsMoving		= false;		// Tracker variable to see if balls are still on the
 bool	isReposition	= false;			// Repositioner is active
 float repoMaxX			= TABLE_WIDTH;	// For clamping to table or set lower for kitchen
 
+bool gameIdle			= true;		// Set by NewGameLocal / EndGameLocal
+
+float timer_end		= 0.0f;		// What should the timer run out at
+float timer_recip		= 0.0f;		// 1 over time limit
+bool	timer_running	= false;
+
+// Values that will get sucked in from the menu
+[HideInInspector] public int local_playerid = -1;
+								uint local_teamid = 0U;		// Interpreted value
+
 // these had to be put up here for some reason
 const float FIXED_TIME_STEP = 0.0125f;			// time step in seconds per iteration
 const float TIME_ALPHA = 50.0f;					// (unused) physics interpolation
 
 // Physics memory
 
-public Vector2[] ball_co = new Vector2[16];	// Current positions
-Vector2[] ball_og = new Vector2[16];	// Break positions
-public Vector2[] ball_vl = new Vector2[16];	// Current velocities
+#if COMPILE_FUNC_TESTS
+public 
+#endif
+Vector2[] ball_co = new Vector2[16];	// Current positions
+
+#if COMPILE_FUNC_TESTS
+public 
+#endif
+Vector2[] ball_vl = new Vector2[16];	// Current velocities
+
 Vector2	 cue_avl = Vector2.zero;		// Cue ball angular velocity
+
+// Timing
+// CONSTANTS
+
+#if HT_QUEST
+const float MAX_DELTA = 0.075f;						// Maximum steps/frame ( 5 ish )
+#else
+const float MAX_DELTA = 0.1f;						// Maximum steps/frame ( 8 )
+#endif
+
+// Calculation constants (measurements are in meters)
+
+const float TABLE_WIDTH		= 1.0668f;					// horizontal span of table
+const float TABLE_HEIGHT	= 0.6096f;					// vertical span of table
+const float BALL_DIAMETRE	= 0.06f;						// width of ball
+const float BALL_PL_X		= 0.03f;						// break placement X
+const float BALL_PL_Y		= 0.05196152422f;			// Break placement Y
+const float BALL_1OR			= 16.66666666666666f;	// 1 over ball radius
+const float BALL_RSQR		= 0.0009f;					// ball radius squared
+const float BALL_DSQR		= 0.0036f;					// ball diameter squared
+const float BALL_DSQRPE		= 0.003481f;				// ball diameter squared plus epsilon
+const float POCKET_RADIUS	= 0.09f;						// Full diameter of pockets (exc ball radi)
+
+const float K_1OR2			= 0.70710678118f;			// 1 over root 2 (normalize +-1,+-1 vector)
+const float K_1OR5			= 0.4472135955f;			// 1 over root 5 (normalize +-1,+-2 vector)
+
+const float POCKET_DEPTH	= 0.04f;						// How far back (roughly) do pockets absorb balls after this point
+const float MIN_VELOCITY	= 0.00005625f;				// SQUARED
+
+const float FRICTION_EFF	= 0.99f;						// How much to multiply velocity by each update
+
+const float SPOT_POSITION_X = 0.5334f;					// First X position of the racked balls
+
+#if HT_QUEST
+uint ANDROID_UNIFORM_CLOCK = 0x00u;
+uint ANDROID_CLOCK_DIVIDER = 0x8u;
+#endif
 
 // General local aesthetic events
 // =========================================================================================================================
 
-Color k_tableColourBlue	= new Color( 0.0f, 0.75f, 1.75f, 1.0f ); // Presets ..
-Color k_tableColourOrange = new Color( 1.75f, 0.25f, 0.0f, 1.0f );
-Color k_tableColourRed	= new Color( 1.2f, 0.0f, 0.0f, 1.0f );
-Color k_tableColorWhite	= new Color( 1.0f, 1.0f, 1.0f, 1.0f );
-Color k_tableColourBlack= new Color( 0.04f, 0.04f, 0.04f, 1.0f );
-Color k_tableColourYellow = new Color( 2.0f, 1.0f, 0.0f, 1.0f );
+Color k_tableColourBlue		= new Color( 0.0f, 0.75f, 1.75f, 1.0f ); // Presets ..
+Color k_tableColourOrange	= new Color( 1.75f, 0.25f, 0.0f, 1.0f );
+Color k_tableColourRed		= new Color( 1.2f, 0.0f, 0.0f, 1.0f );
+Color k_tableColorWhite		= new Color( 1.0f, 1.0f, 1.0f, 1.0f );
+Color k_tableColourBlack	= new Color( 0.01f, 0.01f, 0.01f, 1.0f );
+Color k_tableColourYellow	= new Color( 2.0f, 1.0f, 0.0f, 1.0f );
+Color k_tableColourPink		= new Color( 2.0f, 0.0f, 1.5f, 1.0f );
+Color k_tableColourGreen	= new Color( 0.0f, 2.0f, 0.0f, 1.0f );
+Color k_tableColourLBlue	= new Color( 0.3f, 0.6f, 1.0f, 1.0f );
 
-Color tableSrcColour		= new Color( 1.0f, 1.0f, 1.0f, 1.0f );	// Runtime target colour
-Color tableCurrentColour= new Color( 1.0f, 1.0f, 1.0f, 1.0f );	// Runtime actual colour
+Color tableSrcColour			= new Color( 1.0f, 1.0f, 1.0f, 1.0f );	// Runtime target colour
+Color tableCurrentColour	= new Color( 1.0f, 1.0f, 1.0f, 1.0f );	// Runtime actual colour
 
-Color markerColorOK		= new Color( 0.0f, 1.0f, 0.0f, 1.0f );
-Color markerColorNO		= new Color( 1.0f, 0.0f, 0.0f, 1.0f );
+Color markerColorOK			= new Color( 0.0f, 1.0f, 0.0f, 1.0f );
+Color markerColorNO			= new Color( 1.0f, 0.0f, 0.0f, 1.0f );
 
-Color k_gripColourActive = new Color( 0.0f, 0.5f, 1.1f, 1.0f );
+Color k_gripColourActive	= new Color( 0.0f, 0.5f, 1.1f, 1.0f );
 Color k_gripColourInactive = new Color( 0.34f, 0.34f, 0.34f, 1.0f );
 
+Color k_fabricColour_gray	= new Color( 0.5f, 0.5f, 0.5f, 1.0f );
+Color k_fabricColour_red	= new Color( 0.8962264f, 0.2081864f, 0.1310519f );
+Color k_fabricColour_blue	= new Color( 0.1f, 0.6f, 1.0f, 1.0f );
+
 // 'Pointer' colours.
-Color pColour0;
-Color pColour1;
+Color pColour0;		// Team 0
+Color pColour1;		// Team 1
+Color pColour2;		// No team / open / 9 ball
 Color pColourErr;
-
-public ushort in_coloursetid = 0;
-
-public void PushColourSet()
-{
-	if( api_players[ 0 ] == Networking.LocalPlayer || api_players[ 1 ] == Networking.LocalPlayer )
-	{
-		sn_colourid = in_coloursetid;
-		UpdateColourSources();
-	}
-}
 
 public void UpdateColourSources()
 {
-	ballMaterial.SetTexture( "_MainTex", textureSets[ sn_colourid ] );
+	if( sn_gamemode == 0 )	// Standard 8 ball
+	{
+		pColourErr = k_tableColourRed;
 
-	if( sn_colourid == 0 )	// harry_t
-	{
-		pColour0 = k_tableColourBlue;
-		pColour1 = k_tableColourOrange;
-		pColourErr = k_tableColourRed;
+		pColour2 = k_tableColorWhite;
+
+		if( sn_colourset == 0 )			// Blue / Orange
+		{
+			pColour0 = k_tableColourBlue;
+			pColour1 = k_tableColourOrange;
+		}
+		else if( sn_colourset == 1 )	// pink / green
+		{
+			pColour0 = k_tableColourPink;
+			pColour1 = k_tableColourGreen;
+		}
+		else if( sn_colourset == 2 )	// UK Red / Yellow
+		{
+			pColour0 = k_tableColourRed;
+			pColour1 = k_tableColourYellow;
+		}
+		else									// US doesnt have border colours
+		{
+			pColour0 = k_tableColourBlack;
+			pColour1 = k_tableColourBlack;
+		}
+
+		ballMaterial.SetTexture( "_MainTex", textureSets[ sn_colourset ] );
+		tableMaterial.SetColor( "_ClothColour", k_fabricColour_gray );
 	}
-	else if( sn_colourid == 1 )	// USA
+	else if( sn_gamemode == 1 )	// 9 Ball / USA colours
 	{
-		pColour0 = k_tableColorWhite;
-		pColour1 = k_tableColorWhite;
-		pColourErr = k_tableColourRed;
-	}
-	else
-	{
-		pColour0 = k_tableColourRed;
-		pColour1 = k_tableColourYellow;
-		pColourErr = k_tableColourBlack;
+		pColour0 = k_tableColourLBlue;
+		pColour1 = k_tableColourLBlue;
+		pColour2 = k_tableColourLBlue;
+
+		pColourErr = k_tableColourBlack;	// No error effect
+
+		// 9 ball only uses one colourset / cloth colour
+		ballMaterial.SetTexture( "_MainTex", textureSets[ 3 ] );
+		tableMaterial.SetColor( "_ClothColour", k_fabricColour_blue );
 	}
 }
 
@@ -602,7 +706,7 @@ void UpdateTableColor( uint idsrc )
 	}
 	else
 	{
-		tableSrcColour = k_tableColorWhite;
+		tableSrcColour = pColour2;
 
 		cueRenderers[ 0 ].sharedMaterial.SetColor( uniform_cue_colour, k_tableColorWhite );
 		cueRenderers[ 1 ].sharedMaterial.SetColor( uniform_cue_colour, k_tableColorWhite );
@@ -618,7 +722,7 @@ void DisplaySetLocal()
 	uint picker = sn_turnid ^ sn_playerxor;
 
 #if HT8B_DEBUGGER
-	FRP( FRP_YES + "(local) " + api_players[ sn_turnid ].displayName + ":" + sn_turnid + " is " + 
+	FRP( FRP_YES + "(local) " + Networking.GetOwner( playerTotems[ sn_turnid ] ).displayName + ":" + sn_turnid + " is " + 
 		(picker == 0? "blues": "oranges") + FRP_END );
 #endif
 
@@ -633,30 +737,101 @@ void DisplaySetLocal()
 void GameOverLocal()
 {
 #if HT8B_DEBUGGER
-	FRP( FRP_YES + "(local) Winner of match: " + api_players[ sn_winnerid ].displayName + FRP_END );
+	FRP( FRP_YES + "(local) Winner of match: " + Networking.GetOwner( playerTotems[ sn_winnerid ] ).displayName + FRP_END );
 #endif
+
+	// Return to menu
+	gameIdle = true;
 
 	UpdateTableColor( sn_winnerid );
 
-	infText.text = api_players[ sn_winnerid ].displayName + " wins!";
+	infText.text = Networking.GetOwner( playerTotems[ sn_winnerid ] ).displayName + " wins!";
 	infBaseTransform.SetActive( true );
-	infHowToStart.SetActive( true );
+	marker9ball.SetActive( false );
+	tableoverlayUI.SetActive( false );
+	RackBalls();	// To make sure rigidbodies are completely off
+	isReposition = false;
+	markerObj.SetActive( false );
 
 	UpdateScoreCardLocal();
+
+	// Remove any access rights
+	local_playerid = -1;
+	_UpdateControl();
+
+	// Put menu back on
+	menuController.gameObject.SetActive( true );
+	menuController._internal_state_reset();
+	menuController.table_src_colour = sn_gamemode == 0? k_fabricColour_gray: k_fabricColour_blue;
+	menuController.table_src_light = tableSrcColour;
+}
+
+void _dk_AllowHit()
+{
+	FRP( FRP_LOW + "(local) _AllowHit()" + FRP_END );
+
+	#if !HT_QUEST
+	dk_updatetarget();
+	gripControllers[ sn_turnid ]._dk_unlock();
+	#endif
+}
+
+void _TimerReset()
+{
+	if( sn_timer == 1 )	// 30s
+	{
+		timer_end = Time.timeSinceLevelLoad + 30.0f;
+		timer_recip = 0.03333333333f;
+	}
+	else						// 60s
+	{
+		timer_end = Time.timeSinceLevelLoad + 60.0f;
+		timer_recip = 0.01666666666f;
+	}
+
+	timer_running = true;
 }
 
 void OnTurnChangeLocal()
 {
-#if HT8B_DEBUGGER
-	FRP( FRP_YES + "(local) turn switch to: " + api_players[ sn_turnid ].displayName + FRP_END );
-#endif
-
+	// Effects
 	UpdateTableColor( sn_turnid );
-
 	aud_main.PlayOneShot( snd_NewTurn, 1.0f );
 
 	// Register correct cuetip
 	cuetip = cueTips[ sn_turnid ];
+
+	bool isOurTurn = (local_playerid >= 0) && (local_teamid == sn_turnid);
+
+	// White was pocketed
+	if( (sn_pocketed & 0x1u) == 0x1u )
+	{
+		ball_co[0] = Vector2.zero;
+		ball_vl[1] = Vector2.zero;
+
+		sn_pocketed &= 0xFFFFFFFEu;
+	}
+
+	if( isOurTurn )
+	{
+		if( sn_foul )
+		{
+			isReposition = true;
+			repoMaxX = TABLE_WIDTH;
+			markerObj.SetActive( true );
+
+			markerObj.transform.position = new Vector3( ball_co[0].x, 0.0f, ball_co[0].y );
+		}
+	}
+
+	// Foul state can be cleared now that we've read it
+	sn_foul = false;
+
+	// Force timer reset
+	if( sn_timer > 0 )
+	{
+		_TimerReset();
+	}
 }
 
 void UpdateScoreCardLocal()
@@ -687,7 +862,7 @@ void UpdateScoreCardLocal()
 	scoreCardRenderer.sharedMaterial.SetVector( uniform_scorecard_info, new Vector4( counter0[0]*0.0625f, counter0[1]*0.0625f, 0.0f, 0.0f ) );
 }
 
-// Player scored an objective ball
+// Player scored an objective ball 
 void OnPocketGood()
 {
 	// Make a bright flash
@@ -704,51 +879,107 @@ void OnPocketBad()
 	aud_main.PlayOneShot( snd_Sink, 1.0f );
 }
 
-void ShowBalls( bool state )
+void ShowBalls()
 {
-	for( int i = 0; i < 16; i ++ )
+	if( sn_gamemode == 0 )
 	{
-		balls_render[ i ].SetActive( state );
+		for( int i = 0; i < 16; i ++ )
+		{
+			balls_render[ i ].SetActive( true );
+		}
+	}
+
+	if( sn_gamemode == 1 )
+	{
+		for( int i = 0; i <= 9; i ++ )
+			balls_render[ i ].SetActive( true );
+
+		for( int i = 10; i < 16; i ++ )
+			balls_render[ i ].SetActive( false );
+	}
+}
+
+// Grant cue access if we are playing
+void _UpdateControl()
+{
+	if( local_playerid >= 0 )
+	{
+		if( (local_teamid & 0x1) > 0 )						// Local player is 1, or 3
+		{
+			gripControllers[ 1 ]._AllowUsageLocal();
+			gripControllers[ 0 ]._DisallowUsageLocal();
+		}
+		else															// Local player is 0, or 2
+		{
+			gripControllers[ 0 ]._AllowUsageLocal();
+			gripControllers[ 1 ]._DisallowUsageLocal();
+		}
+	}
+	else
+	{
+		gripControllers[ 0 ]._DisallowUsageLocal();
+		gripControllers[ 1 ]._DisallowUsageLocal();
 	}
 }
 
 void NewGameLocal()
 {
-	VRCPlayerApi startPlayer = Networking.GetOwner(playerTotems[0]);
+	FRP( FRP_LOW + "NewGameLocal()" + FRP_END );
 
-#if HT8B_DEBUGGER
-	FRP( FRP_YES + "(local) " + ( startPlayer != null? startPlayer.displayName: "[null]" ) + " started a new game" + FRP_END );
-#endif
+	gameIdle = false;
 
-	// Put names on the board
-	if( startPlayer != null )
+	// Calculate interpreted values from menu states
+	if( local_playerid >= 0 )
+		local_teamid = (uint)local_playerid & 0x1u;
+
+	// Disable menu
+	menuController.game_is_running = true;
+	menuController.gameObject.SetActive( false );
+
+	// Reflect menu-state settings (for late joiners)
+	UpdateColourSources();
+	UpdateTableColor(0);
+	_UpdateControl();
+
+	// TODO: move to function
+	if( sn_gamemode == 0 )	// 8 ball specific
 	{
-		api_players[ 0 ] = startPlayer;
-		api_players[ 1 ] = Networking.GetOwner( playerTotems[1] );
-
-		playerNames[ 0 ].text = api_players[ 0 ].displayName;
-		playerNames[ 1 ].text = api_players[ 1 ].displayName;
+		scoreCardRenderer.gameObject.SetActive( true );
+	}
+	else if( sn_gamemode == 1 )	// 9 ball specific
+	{
+		scoreCardRenderer.gameObject.SetActive( false );
 	}
 
-	//tableSrcColour = tableColorWhite;
-	UpdateTableColor( 0 );
+	ShowBalls();
 
+	// Reflect game state
+	UpdateScoreCardLocal();
+	isReposition = false;
+	markerObj.SetActive( false );
+	infBaseTransform.SetActive( false );
+
+	// Effects
 	introAminTimer = 2.0f;
 	aud_main.PlayOneShot( snd_Intro, 1.0f );
 
-	// Turn off info
-	infBaseTransform.SetActive( false );
-	infHowToStart.SetActive( false );
+	// Player name texts
+	string base_text = "";
+	if( sn_allowteams )
+	{
+		base_text = "Team ";
+	}
 
-	ShowBalls( true );
+	tableoverlayUI.SetActive( true );
+	playerNames[0].text = base_text + Networking.GetOwner( playerTotems[0] ).displayName;
+	playerNames[1].text = base_text + Networking.GetOwner( playerTotems[1] ).displayName;
 
-	UpdateScoreCardLocal();
-
-	isReposition = false;
+	timer_running = false;
 }
 
 // REGION PHYSICS ENGINE
 // =========================================================================================================================
+#region ht8b_phys
 
 // Cue input tracking
 
@@ -758,61 +989,42 @@ Vector3	cue_vdir;
 Vector2	cue_shotdir;
 float		cue_fdir;
 
-// Timing
-
-#if HT_QUEST
-const float MAX_DELTA = 0.075f;						// Maximum steps/frame ( 5 ish )
-#else
-const float MAX_DELTA = 0.1f;						// Maximum steps/frame ( 8 )
-#endif
-
-// Calculation constants (measurements are in meters)
-
-const float TABLE_WIDTH		= 1.0668f;					// horizontal span of table
-const float TABLE_HEIGHT	= 0.6096f;					// vertical span of table
-const float BALL_DIAMETRE	= 0.06f;						// width of ball
-const float BALL_PL_X		= 0.03f;						// break placement X
-const float BALL_PL_Y		= 0.05196152422f;			// Break placement Y
-const float BALL_1OR			= 16.66666666666666f;	// 1 over ball radius
-const float BALL_RSQR		= 0.0009f;					// ball radius squared
-const float BALL_DSQR		= 0.0036f;					// ball diameter squared
-const float BALL_DSQRPE		= 0.003481f;				// ball diameter squared plus epsilon
-const float POCKET_RADIUS	= 0.09f;						// Full diameter of pockets (exc ball radi)
-
-const float K_1OR2			= 0.70710678118f;			// 1 over root 2 (normalize +-1,+-1 vector)
-const float K_1OR5			= 0.4472135955f;			// 1 over root 5 (normalize +-1,+-2 vector)
-
-const float POCKET_DEPTH	= 0.04f;						// How far back (roughly) do pockets absorb balls after this point
-const float MIN_VELOCITY	= 0.00005625f;				// SQUARED
-
-const float FRICTION_EFF	= 0.99f;						// How much to multiply velocity by each update
-
-#if HT_QUEST
-uint ANDROID_UNIFORM_CLOCK = 0x00u;
-uint ANDROID_CLOCK_DIVIDER = 0x8u;
-#endif
-
 #if HT_QUEST
 #else
 public Vector3	dkTargetPos;				// Target for desktop aiming
 #endif
 
-// Send ball to the gulag
+// Finalize positions onto their rack spots
+void RackBalls()
+{
+	for( int i = 0; i < 16; i ++ )
+	{
+		balls_render[ i ].GetComponent< Rigidbody >().isKinematic = true;
+
+		balls_render[ i ].transform.localPosition = new Vector3(
+			ball_co[ i ].x,
+			-0.0702f,
+			ball_co[ i ].y
+		);
+	}
+}
+
+// Internal game state pocket and enable unity physics to play out the rest
 void PocketBall( int id )
 {
 	uint total = 0U;
 
 	// Get total for X positioning
-	for( int i = 1; i < 16; i ++ )
+	int count_extent = sn_gamemode == 1U? 10: 16;
+	for( int i = 1; i < count_extent; i ++ )
 	{
 		total += (sn_pocketed >> i) & 0x1U;
 	}
 
-	// Put balls on the edge of the table for now
-	// TODO: propper display
-	ball_co[ id ].x = -TABLE_WIDTH + (float)total * BALL_DIAMETRE;
-	ball_co[ id ].y = TABLE_HEIGHT + BALL_DIAMETRE * 2.0f;
-
+	// set this for later
+	ball_co[ id ].x = -0.9847f + (float)total * BALL_DIAMETRE;
+	ball_co[ id ].y = 0.768f;
+	
 	sn_pocketed ^= 1U << id;
 
 	uint bmask = 0x1FCU << ((int)(sn_turnid ^ sn_playerxor) * 7);
@@ -827,6 +1039,17 @@ void PocketBall( int id )
 		// bad
 		OnPocketBad();
 	}
+
+	// VFX ( make ball move )
+	Rigidbody body = balls_render[ id ].GetComponent< Rigidbody >();
+	body.isKinematic = false;
+	body.velocity = new Vector3(
+	
+		ball_vl[ id ].x,
+		0.0f,
+		ball_vl[ id ].y
+		
+	);
 }
 
 // TODO: Inline
@@ -867,11 +1090,27 @@ void ClampBallVelSemi( int id, Vector2 surface )
 // Is cue touching another ball?
 bool CueContacting()
 {
-	for( int i = 1; i < 16; i ++ )
+	// 8 ball, practice, portal
+	if( sn_gamemode != 1 )
 	{
-		if( (ball_co[0] - ball_co[i]).sqrMagnitude < BALL_DSQR )
+		// Check all
+		for( int i = 1; i < 16; i ++ )
 		{
-			return true;
+			if( (ball_co[0] - ball_co[i]).sqrMagnitude < BALL_DSQR )
+			{
+				return true;
+			}
+		}
+	}
+	else // 9 ball
+	{
+		// Only check to 9 ball
+		for( int i = 1; i <= 9; i ++ )
+		{
+			if( (ball_co[0] - ball_co[i]).sqrMagnitude < BALL_DSQR )
+			{
+				return true;
+			}
 		}
 	}
 
@@ -1157,63 +1396,7 @@ Vector2 LineProject( Vector2 start, Vector2 dir, Vector2 pos )
 {
 	return start + dir * Vector2.Dot( pos - start, dir );
 }
-
-// Setup player's turn
-void Owner_NewTurn()
-{
-#if MULTIGAMES_PORTAL
-	PortalRandomize();
-#endif
-
-#if HT8B_DEBUGGER
-	FRP( FRP_YES + "NewTurn()" + FRP_END );
-#endif
-
-#if !HT_QUEST
-	dk_updatetarget();
-#endif
-
-	// Fixup game state
-	if( sn_foul )
-	{
-		#if HT8B_DEBUGGER
-		FRP( FRP_LOW + "Game state fixup" + FRP_END );
-		#endif
-
-		// Allow repositioning anywhere
-		isReposition = true;
-		repoMaxX = TABLE_WIDTH;
-		markerObj.SetActive( true );
-
-		// Cue ball is out of play
-		if( (sn_pocketed & 0x1U) != 0 )
-		{
-			ball_co[0] = ball_og[0];
-			ball_vl[0] = Vector2.zero;
-			
-			markerObj.transform.localPosition = Vector3.zero;
-
-			// Save out position
-			// NetPack( sn_turnid );
-
-			// https://vrchat.canny.io/vrchat-udon-closed-alpha-feedback/p/bitwisenot-for-integer-built-in-types
-			// sn_pocketed &= ~0x1U;
-
-			sn_pocketed &= 0xFFFFFFFEU;
-		}
-		else
-		{
-			markerObj.transform.localPosition = new Vector3( ball_co[0].x, 0.0f, ball_co[0].y );
-		}
-	}
-
-	sn_permit = true;
-	sn_foul = false;
-	sn_firsthit = 0;
-
-	// Propogate any updates we made
-	NetPack( sn_turnid );
-}
+#endregion
 
 void SimEnd_Win( uint winner )
 {
@@ -1224,10 +1407,10 @@ void SimEnd_Win( uint winner )
 	sn_gameover = true;
 	sn_winnerid = winner;
 
-	GameOverLocal();
-
 	NetPack( sn_turnid );
 	NetRead();
+
+	GameOverLocal();
 }
 
 void SimEnd_Pass()
@@ -1235,6 +1418,8 @@ void SimEnd_Pass()
 	#if HT8B_DEBUGGER
 	FRP( FRP_LOW + " -> PASS" + FRP_END );
 	#endif
+
+	sn_permit = true;
 
 	NetPack( sn_turnid ^ 0x1U );
 	NetRead();
@@ -1247,8 +1432,10 @@ void SimEnd_Foul()
 	#endif
 
 	sn_foul = true;
+	sn_permit = true;
 
-	SimEnd_Pass();
+	NetPack( sn_turnid ^ 0x1U );
+	NetRead();
 }
 
 void SimEnd_Continue()
@@ -1257,28 +1444,80 @@ void SimEnd_Continue()
 	FRP( FRP_LOW + " -> COTNINUE" + FRP_END );
 	#endif
 
-	// Close table if it was open
-	if( sn_open )
+	// Close table if it was open ( 8 ball specific )
+	if( sn_gamemode == 0 )
 	{
-		sn_open = false;
-
-		// Player triggered turn xor
-		// check which group has the most sinks and 
-		if((sn_pocketed & 0x1FC) > ((sn_pocketed & 0xFE00) >> 7))
+		if( sn_open )
 		{
-			sn_playerxor = sn_turnid;
-		}
-		else
-		{
-			sn_playerxor = sn_turnid ^ 0x1u;
-		}
+			uint sink_orange = 0;
+			uint sink_blue = 0;
+			uint pmask = sn_pocketed >> 2;
 
-		DisplaySetLocal();
+			for( int i = 0; i < 7; i ++ )
+			{
+				if( (pmask & 0x1u) == 0x1u )
+					sink_blue ++;
+
+				pmask >>= 1;
+			}
+			for( int i = 0; i < 7; i ++ )
+			{
+				if( (pmask & 0x1u) == 0x1u )
+					sink_orange ++;
+
+				pmask >>= 1;
+			}
+
+			if( sink_blue == sink_orange )
+			{
+				// Sunk equal amounts therefore still undecided
+			}
+			else
+			{
+				if( sink_blue > sink_orange )
+				{
+					sn_playerxor = sn_turnid;
+				}
+				else
+				{
+					sn_playerxor = sn_turnid ^ 0x1u;
+				}
+
+				sn_open = false;
+				DisplaySetLocal();
+			}
+		}
 	}
 
-	Owner_NewTurn();
-	// NetPack( sn_turnid ); <- this is called in Owner_NewTurn();
+	// Keep playing
+	sn_permit = true;
+
+	NetPack( sn_turnid );
 	NetRead();
+}
+
+// Find the lowest numbered ball, that isnt the cue, on the table
+// This function finds the VISUALLY represented lowest ball,
+// since 8 has id 1, the search needs to be split
+int _LowestBall( uint field )
+{
+	for( int i = 2; i <= 8; i ++ )
+	{
+		if( ((field >> i) & 0x1U) == 0x00U )
+			return i;
+	}
+
+	if( ((field) & 0x2U) == 0x00U )
+		return 1;
+
+	for( int i = 9; i < 16; i ++ )
+	{
+		if( ((field >> i) & 0x1U) == 0x00U )
+			return i;
+	}
+
+	// ??
+	return 0;
 }
 
 // once balls stops rolling this is called
@@ -1290,28 +1529,32 @@ void SimEnd()
 	FRP( FRP_LOW + "(local) SimEnd()" + FRP_END );
 	#endif
 
-	// TODO: split state checking into more manageable chunks
-	if( Networking.GetOwner( this.gameObject ) == Networking.LocalPlayer )
+	// Make sure we only run this from the client who initiated the move
+	if( sn_oursim )
 	{
+		sn_oursim = false;
+
+		// We are updating the game state so make sure we are network owner
+		Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+
 		// Owner state checks
 		#if HT8B_DEBUGGER
 		FRP( FRP_LOW + "Post-move state checking" + FRP_END );
 		#endif
 
-		uint bmask = 0xFFFCU;
-		uint emask = 0x0U;
+		uint bmask = 0xFFFCu;
+		uint emask = 0x0u;
 
 		// Quash down the mask if table has closed
 		if( !sn_open )
 		{
-			bmask = bmask & (0x1FCU << ((int)(sn_playerxor ^ sn_turnid) * 7));
-			emask = 0x1FCU << ((int)(sn_playerxor ^ sn_turnid ^ 0x1U) * 7);
+			bmask = bmask & (0x1FCu << ((int)(sn_playerxor ^ sn_turnid) * 7));
+			emask = 0x1FCu << ((int)(sn_playerxor ^ sn_turnid ^ 0x1U) * 7);
 		}
 
 		// Common informations
 		bool isSetComplete = (sn_pocketed & bmask) == bmask;
 		bool isScratch = (sn_pocketed & 0x1U) == 0x1U;
-		bool is8Sink = (sn_pocketed & 0x2U) == 0x2U;
 
 		// Append black to mask if set is done
 		if( isSetComplete )
@@ -1319,14 +1562,61 @@ void SimEnd()
 			bmask |= 0x2U;
 		}
 
-		bool isObjectiveSink = (sn_pocketed & bmask) > (sn_pocketed_prv & bmask);
-		bool isOpponentSink = (sn_pocketed & emask) > (sn_pocketed_prv & emask);
+		// These are the resultant states we can set for each mode
+		// then the rest is taken care of
+		bool 
+			isObjectiveSink,
+			isOpponentSink,
+			winCondition,
+			foulCondition,
+			deferLossCondition
+		;
 
-		// Calculate if objective was not hit first
-		bool isWrongHit = ((0x1U << sn_firsthit) & bmask) == 0;
+		if( sn_gamemode == 0 )	// Standard 8 ball
+		{
+			isObjectiveSink = (sn_pocketed & bmask) > (sn_pocketed_prv & bmask);
+			isOpponentSink = (sn_pocketed & emask) > (sn_pocketed_prv & emask);
 
-		bool winCondition = isSetComplete && is8Sink;
-		bool foulCondition = isScratch || isWrongHit;
+			// Calculate if objective was not hit first
+			bool isWrongHit = ((0x1U << sn_firsthit) & bmask) == 0;
+
+			bool is8Sink = (sn_pocketed & 0x2U) == 0x2U;
+
+			winCondition = isSetComplete && is8Sink;
+			foulCondition = isScratch || isWrongHit;
+			
+			deferLossCondition = is8Sink;
+		} 
+		else if( sn_gamemode == 1 )	// 9 ball
+		{
+			// Rules are from: https://www.youtube.com/watch?v=U0SbHOXCtFw
+
+			// Rule #1: Cueball must strike the lowest number ball, first
+			bool isWrongHit = !(_LowestBall( sn_pocketed_prv ) == sn_firsthit);
+
+			// Rule #2: Pocketing cueball, is a foul
+			
+			// Win condition: Pocket 9 ball ( at anytime )
+			winCondition = (sn_pocketed & 0x200u) == 0x200u;
+
+			// this video is hard to follow so im just gonna guess this is right
+			isObjectiveSink = (sn_pocketed & 0x3FEu) > (sn_pocketed_prv & 0x3FEu);
+			
+			isOpponentSink = false;
+			deferLossCondition = false;
+
+			foulCondition = isWrongHit || isScratch;
+
+			// TODO: Implement rail contact requirement
+		} 
+		else // No gamemode / Undefined behaviour 
+		{
+			isObjectiveSink = false;
+			isOpponentSink = false;
+			winCondition = false;
+			foulCondition = false;
+			deferLossCondition = false;
+		}
 
 		if( winCondition )
 		{
@@ -1341,7 +1631,7 @@ void SimEnd()
 				SimEnd_Win( sn_turnid );
 			}
 		}
-		else if( is8Sink )
+		else if( deferLossCondition )
 		{
 			// Loss
 			SimEnd_Win( sn_turnid ^ 0x1U );
@@ -1362,6 +1652,7 @@ void SimEnd()
 			SimEnd_Pass();
 		}
 	}
+
 	// Check if there was a network update on hold
 	if( sn_updatelock )
 	{
@@ -1372,6 +1663,25 @@ void SimEnd()
 		sn_updatelock = false;
 
 		NetRead();
+	}
+}
+
+void OnTimerEndLocal()
+{
+	timer_running = false;
+	FRP( FRP_ERR + "Out of time!!" + FRP_END );
+
+	// We are holding the stick so propogate the change
+	if( Networking.GetOwner( playerTotems[ sn_turnid ] ) == Networking.LocalPlayer )
+	{
+		Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+		SimEnd_Foul();
+	}
+	else
+	{
+		// All local players freeze until next target
+		// can pick up and propogate timer end
+		sn_permit = false;
 	}
 }
 
@@ -1438,7 +1748,9 @@ void PhysicsUpdate()
 	for( int i = 0; i < 16; i ++ )
 	{
 		if( (ball_bit & sn_pocketed ) == 0U )
+		{
 			BallPockets( i );
+		}
 
 		ball_bit <<= 1;
 	}
@@ -1477,8 +1789,14 @@ public void PosFinalize()
 		dk_updatetarget();
 #endif
 
+		sn_permit = true;
+		sn_foul = false;
+
+		Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+
 		// Save out position to remote clients
 		NetPack( sn_turnid );
+		NetRead();
 	}
 }
 
@@ -1487,6 +1805,10 @@ float accum;
 
 private void Update()
 {
+	// Control is purely in menu behaviour
+	if( gameIdle )
+		return;
+
 	// Physics step accumulator routine
 	float time = Time.timeSinceLevelLoad;
 	float timeDelta = time - timeLast;
@@ -1511,9 +1833,19 @@ private void Update()
 	}
 
 	// Update rendering objects positions
+	uint ball_bit = 0x1u;
 	for( int i = 0; i < 16; i ++ )
 	{
-		balls_render[i].transform.localPosition = new Vector3( ball_co[i].x, 0.0f, ball_co[i].y );
+		if( (ball_bit & sn_pocketed) == 0x0u )
+		{
+			Vector3 temp = balls_render[i].transform.localPosition;
+			temp.x = ball_co[i].x;
+			temp.z = ball_co[i].y;
+			temp.y = 0.0f;
+			balls_render[i].transform.localPosition = temp;
+		}
+
+		ball_bit <<= 1;
 	}
 
 	cue_lpos = this.transform.InverseTransformPoint( cuetip.transform.position );
@@ -1544,11 +1876,11 @@ private void Update()
 
 			if( isContact )
 			{
-				markerRender.sharedMaterial.SetColor( uniform_marker_colour, markerColorNO );
+				markerMaterial.SetColor( uniform_marker_colour, markerColorNO );
 			}
 			else
 			{
-				markerRender.sharedMaterial.SetColor( uniform_marker_colour, markerColorOK );
+				markerMaterial.SetColor( uniform_marker_colour, markerColorOK );
 			}
 		}
 
@@ -1565,52 +1897,51 @@ private void Update()
 			// Hit condition is when cuetip is gone inside ball
 			if( (lpos2 - ball0ws).sqrMagnitude < BALL_RSQR )
 			{
+				// Make sure repositioner is turned off if the player decides he just
+				// wanted to hit it without putting it somewhere
+				isReposition = false;
+				markerObj.SetActive( false );
 
-#if HT8B_ALLOW_AUTOSWITCH
-				// This check is here for stability when using auto-transfer
-				if( Networking.GetOwner( playerTotems[ sn_turnid ] ) == Networking.LocalPlayer )
-#else
-				if( Networking.GetOwner( this.gameObject ) == Networking.LocalPlayer )
-#endif
-				{
-					// Make sure repositioner is turned off if the player decides he just
-					// wanted to hit it without putting it somewhere
-					isReposition = false;
-					markerObj.SetActive( false );
+				devhit.SetActive( false );
+				guideline.SetActive( false );
 
-					devhit.SetActive( false );
-					guideline.SetActive( false );
+				// Compute velocity delta
+				float vel = (lpos2 - cue_llpos).magnitude * 10.0f;
 
-					// Compute velocity delta
-					float vel = (lpos2 - cue_llpos).magnitude * 10.0f;
+				// weeeeeeee
+				ball_vl[0] = cue_shotdir * Mathf.Min( vel, 1.0f ) * 14.0f;
 
-					// weeeeeeee
-					ball_vl[0] = cue_shotdir * Mathf.Min( vel, 1.0f ) * 14.0f;
+				// ball avl is a function of velocity
+				cue_avl = ball_vl[0] * RaySphere_output.y * 33.3333333333f;
 
-					// ball avl is a function of velocity
-					cue_avl = ball_vl[0] * RaySphere_output.y * 33.3333333333f;
+				// Remove locks
+				sn_armed = false;
+				sn_permit = false;
 
-					// Remove locks
-					sn_armed = false;
-					sn_permit = false;
+				#if HT8B_DEBUGGER
+				FRP( FRP_LOW + "Commiting changes" + FRP_END );
+				#endif
 
-					#if HT8B_DEBUGGER
-					FRP( FRP_LOW + "Commiting changes" + FRP_END );
-					#endif
-
-					// Commit changes
-					sn_simulating = true;
-					sn_pocketed_prv = sn_pocketed;
+				// Commit changes
+				sn_simulating = true;
+				sn_pocketed_prv = sn_pocketed;
 
 #if !HT_QUEST
-					// Remove desktop locks
-					gripControllers[0].dk_endhit();
-					gripControllers[1].dk_endhit();
+				// Remove desktop locks
+				gripControllers[0].dk_endhit();
+				gripControllers[1].dk_endhit();
 #endif
+	
+				// Reset first hit counter
+				sn_firsthit = 0;
 
-					NetPack( sn_turnid );
-					NetRead();
-				}
+				// Make sure we definately are the network owner
+				Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+
+				NetPack( sn_turnid );
+				NetRead();
+
+				sn_oursim = true;
 			}
 		}
 		else
@@ -1677,8 +2008,29 @@ private void Update()
 		#endif
 	}
 
+	float time_percentage;
+	if( timer_running )
+	{
+		float timeleft = timer_end - Time.timeSinceLevelLoad;
+
+		if( timeleft < 0.0f )
+		{
+			OnTimerEndLocal();
+			time_percentage = 0.0f;
+		}
+		else
+		{
+			time_percentage = 1.0f - (timeleft * timer_recip);
+		}
+	}
+	else
+	{
+		time_percentage = 0.0f;
+	}
+
 	#if !HT_QUEST
-	tableRenderer.sharedMaterial.SetColor( uniform_tablecolour, tableCurrentColour );
+	tableMaterial.SetColor( uniform_tablecolour, 
+		new Color( tableCurrentColour.r, tableCurrentColour.g, tableCurrentColour.b, time_percentage ) );
 	#endif
 
 	// Intro animation
@@ -1726,7 +2078,7 @@ private void Update()
 void sn_copyprv()
 {
 	// Init _prv states
-	sn_pocketed_prv = sn_pocketed;
+	//sn_pocketed_prv = sn_pocketed;		this one needs to be independent 
 	sn_simulating_prv = sn_simulating;
 	sn_turnid_prv = sn_turnid;
 	sn_foul_prv = sn_foul;
@@ -1736,11 +2088,17 @@ void sn_copyprv()
 	sn_winnerid_prv = sn_winnerid;
 	sn_permit_prv = sn_permit;
 	sn_gameid_prv = sn_gameid;
-	sn_colourid_prv = sn_colourid;
+	
+	// Since 1.0.0
+	sn_gamemode_prv = sn_gamemode;
+	sn_colourset_prv = sn_colourset;
+	sn_timer_prv = sn_timer;
 }
 
 private void Start()
 {
+	menuController._init();
+
 	sn_copyprv();
 
 	#if HT8B_DEBUGGER
@@ -1758,8 +2116,6 @@ private void Start()
 	uniform_cue_colour = Shader.PropertyToID( "_ReColor" );
 	
 #endif
-	UpdateColourSources();
-	UpdateTableColor( 0 );
 
 	aud_main = this.GetComponent<AudioSource>();
 	//tableRenderer = gametable.GetComponent<Renderer>();
@@ -1771,19 +2127,13 @@ private void Start()
 	devhit.SetActive( false );
 	infBaseTransform.SetActive( false );
 	markerObj.SetActive( false );
-
-	for( int i = 0; i < 16; i ++ ) 
-	{
-		ball_og[i].x = balls_render[i].transform.localPosition.x;
-		ball_og[i].y = balls_render[i].transform.localPosition.z;
-		balls_render[i].SetActive(false);
-	}
-
-	//SetupBreak();
-
-	NetPack( 0 );
-	NetRead();
+	tableoverlayUI.SetActive( false );
+	marker9ball.SetActive( false );
 }
+
+int[] break_order_8ball = { 9, 2, 10, 11, 1, 3, 4, 12, 5, 13, 14, 6, 15, 7, 8 };
+int[] break_order_9ball = { 2, 3, 4, 5, 9, 6, 7, 8, 1 };
+int[] break_rows_9ball = { 0, 1, 2, 1, 0 }; 
 
 // Resets local game state to defined state
 // TODO: Merge this with NewGame()
@@ -1793,8 +2143,6 @@ public void SetupBreak()
 	FRP( FRP_LOW + "SetupBreak()" + FRP_END );
 	#endif
 
-	sn_pocketed = 0x00;
-	sn_pocketed_prv = 0x00;
 	sn_simulating = false;
 	sn_open = true;
 	sn_gameover = false;
@@ -1803,115 +2151,103 @@ public void SetupBreak()
 	sn_playerxor = 0;
 	sn_winnerid = 0;
 
-	for( int i = 0; i < 16; i ++ )
-	{
-		ball_co[ i ] = ball_og[ i ];
-		ball_vl[ i ] = Vector2.zero;
-	}
+	// Cue ball
+	ball_co[ 0 ] = new Vector2( -SPOT_POSITION_X, 0.0f );
+	ball_vl[ 0 ] = Vector2.zero;
 
 	// Start at spot
 	// Standard 8 Ball setup
-	//for( int i = 0; i < )
-
-
-	NewGameLocal();
-}
-
-public void SendDebugImpulse()
-{
-	#if HT8B_DEBUGGER
-	FRP( "Resetting" );
-	#endif
-
-	SetupBreak();
-
-	// Re-encode positions
-	NetPack( 0 );
-	NetRead();
-}
-
-// ** experimental ** yoink turn from other player
-// TODO: maybe review transfer system to instead only use
-// cue IDs.
-
-public void AutoTake0()
-{
-	if( sn_turnid == 0 && sn_permit )
+	if( sn_gamemode == 0 )
 	{
-		Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
-	}
-}
+		sn_pocketed = 0x00U;
 
-public void AutoTake1()
-{
-	if( sn_turnid == 1 && sn_permit )
-	{
-		Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+		for( int i = 0, k = 0; i < 5; i ++ )
+		{
+			for( int j = 0; j <= i; j ++ )
+			{
+				ball_co[ break_order_8ball[ k ++ ] ] = new Vector2( SPOT_POSITION_X + (float)i * BALL_PL_Y, (float)(-i + j * 2) * BALL_PL_X );
+				ball_vl[ k ] = Vector2.zero;
+			}
+		}
 	}
+	else // 9 ball
+	{
+		sn_pocketed = 0xFC00U;
+
+		for( int i = 0, k = 0; i < 5; i ++ )
+		{
+			int rown = break_rows_9ball[ i ];
+			for( int j = 0; j <= rown; j ++ )
+			{
+				ball_co[ break_order_9ball[ k ++ ] ] = new Vector2( SPOT_POSITION_X + (float)i * BALL_PL_Y, (float)(-rown + j * 2) * BALL_PL_X );
+				ball_vl[ k ] = Vector2.zero;
+			}
+		}
+	}
+
+	sn_pocketed_prv = sn_pocketed;
 }
 
 public void NewGame()
 {
-	// This will get called by all clients who observe the collision
-	// between the two sticks. Therefore extra checks are done to make
-	// sure this only runs predictably
-
-	#if HT8B_DEBUGGER
-	FRP( FRP_LOW + "(local) NewGame()" + FRP_END );
-	#endif
-
-	if( Networking.GetOwner( playerTotems[0] ) == Networking.LocalPlayer )
+	// Check if game in progress
+	if( sn_gameover )
 	{
-		// Check if game in progress
-		if( sn_gameover )
-		{
-			#if HT8B_DEBUGGER
-			FRP( FRP_YES + "Starting new game" + FRP_END );
-			#endif
+		#if HT8B_DEBUGGER
+		FRP( FRP_YES + "Starting new game" + FRP_END );
+		#endif
 
-			Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+		// Pull in menu variables
+		sn_gamemode = (uint)menuController.gamemode_id;
+		sn_colourset = (uint)menuController.colour_id;
+		sn_timer = (uint)menuController.timer_id;
+		sn_allowteams = (uint)menuController.teams_allowed == 0x1u;
+		// = (uint)menuController.teams_allowed;
 
-			sn_gameid ++;
+		// Get gamestate rolling
+		sn_gameid ++;
+		sn_permit = true;
 
-			SetupBreak();
+		NewGameLocal();
 
-			// Override allow repositioning within kitchen
-			isReposition = true;
-			repoMaxX = -TABLE_WIDTH * 0.5f;
-			markerObj.transform.localPosition = new Vector3( ball_og[0].x, 0.0f, ball_og[0].y );
-			markerObj.SetActive( true );
+		// Following is overrides of NewGameLocal, for game STARTER only
+		SetupBreak();
+		UpdateTableColor(0);
 
-			Owner_NewTurn();
+		Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+		NetPack( 0 );
+		NetRead();
 
-			// TODO: send which totem ID started the game instead
-			NetPack( 0 );
-			NetRead();
-		}
-		else
-		{
-			#if HT8B_DEBUGGER
-			FRP( FRP_WARN + "game in progress" + FRP_END );
-			#endif
-		}
+		// Override allow repositioning within kitchen
+		// Local effector
+		isReposition = true;
+		repoMaxX = -SPOT_POSITION_X;
+		markerObj.transform.localPosition = new Vector3( ball_co[ 0 ].x, 0.0f, ball_co[0].y );
+		markerObj.SetActive( true );
 	}
 	else
 	{
-		// FRP( FRP_WARN + "(local) not player 0" + FRP_END );
+		// Should not be hit since v1.0.0
+		#if HT8B_DEBUGGER
+		FRP( FRP_ERR + "game in progress" + FRP_END );
+		#endif
 	}
 }
 
 // reset game
 public void ForceEndGame()
 {
-	// Limit reset to totem owners ownly
+	// Limit reset to totem owners ownly, this will always be someone in the room
+	// but it may not be obvious to players who has the ownership. So a info text
+	// is added above the reset button telling them who can reset if they dont have it
+	// this is simply to prevent trolls running in and force resetting at random
+
 	if( Networking.LocalPlayer == Networking.GetOwner( playerTotems[0] ) ||
 		Networking.LocalPlayer == Networking.GetOwner( playerTotems[1] ))
 	{
 		#if HT8B_DEBUGGER
 		FRP( FRP_WARN + "Ending game early" + FRP_END );
 		#endif
-
-		Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
 
 		sn_gameover = true;
 		sn_simulating = false;
@@ -1922,12 +2258,15 @@ public void ForceEndGame()
 		// For good measure in case other clients trigger an event whilst owner
 		sn_packetid += 2;
 
-		GameOverLocal();
-
+		Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
 		NetPack( sn_turnid );
+		NetRead();
+
+		GameOverLocal();
 	}
 	else
 	{
+		// TODO: Make this a panel
 		#if HT8B_DEBUGGER
 		FRP( FRP_ERR + "Reset is availible to: " + Networking.GetOwner( playerTotems[0] ).displayName + " and " + Networking.GetOwner( playerTotems[1] ).displayName + FRP_END );
 		#endif
@@ -1972,7 +2311,11 @@ Vector2 Decodev2( int start, float range )
 // Encode all data of game state into netstr
 public void NetPack( uint _turnid )
 {
-	sn_packetid ++;
+	if( local_playerid < 0 )
+	{
+		FRP( FRP_ERR + "Critical error: local_playerid was less than 0 when trying to NetPack()" + FRP_END );
+		return;
+	}
 
 	// Garuntee array size by reallocating.. because c#
 	net_data = new byte[0x52];
@@ -1991,20 +2334,32 @@ public void NetPack( uint _turnid )
 	EncodeUint16( 0x48, (ushort)(sn_pocketed & 0x0000FFFFU) );
 
 	// Game state
-	uint flags = 0x0U;
-	if( sn_simulating ) flags |= 0x1U;
-	flags |= _turnid << 1;
-	if( sn_foul ) flags |= 0x4U;
-	if( sn_open ) flags |= 0x8U;
-	flags |= sn_playerxor << 4;
-	if( sn_gameover ) flags |= 0x20U;
-	flags |= sn_winnerid << 6;
-	if( sn_permit ) flags |= 0x80U;
+	uint flags = 0x0U;						// bit #
+	if( sn_simulating ) flags |= 0x1U;	// 0
+	flags |= _turnid << 1;					// 1
+	if( sn_foul ) flags |= 0x4U;			// 2
+	if( sn_open ) flags |= 0x8U;			// 3
+	flags |= sn_playerxor << 4;			// 4
+	if( sn_gameover ) flags |= 0x20U;	// 5
+	flags |= sn_winnerid << 6;				// 6
+	if( sn_permit ) flags |= 0x80U;		// 7
+
+	// Since v1.0.0
+	flags |= sn_gamemode << 8;				// 8  - 3 bits
+	flags |= sn_colourset << 11;			// 11 - 2 bits
+	flags |= sn_timer << 13;				// 13 - 2 bits
+	if( sn_allowteams ) flags |= 0x8000u;	// 15 - 1 bit
 
 	EncodeUint16( 0x4A, (ushort)flags );
-	EncodeUint16( 0x4C, sn_packetid );
+
+	// Player ID msb gets added to referee any discrepencies between clients
+	// Higher order players get priority because it will be less common
+	// to play 2v2, so we can save most packet id's for normal 1v1
+	uint msb_playerid = ((uint)local_playerid & 0x2u) >> 1;
+
+	EncodeUint16( 0x4C, (ushort)(sn_packetid + 1u + msb_playerid) );
 	EncodeUint16( 0x4E, sn_gameid );
-	EncodeUint16( 0x50, sn_colourid );
+	EncodeUint16( 0x50, 0xBEEF );
 
 	netstr = Convert.ToBase64String( net_data, Base64FormattingOptions.None );
 
@@ -2040,10 +2395,10 @@ public void NetRead()
 
 	// Throw out updates that are possible errournous
 	ushort nextid = DecodeUint16( 0x4C );
-	if( nextid < sn_packetid )
+	if( nextid <= sn_packetid )
 	{
 		#if HT8B_DEBUGGER
-		FRP( FRP_WARN + "Packet ID was old ( " + nextid + " < " + sn_packetid + " ). Throwing out update" + FRP_END );
+		FRP( FRP_WARN + "Packet ID was old ( " + nextid + " <= " + sn_packetid + " ). Throwing out update" + FRP_END );
 		#endif
 
 		return;
@@ -2074,25 +2429,25 @@ public void NetRead()
 	sn_playerxor = (gamestate & 0x10U) >> 4;
 	sn_gameover = (gamestate & 0x20U) == 0x20U;
 	sn_winnerid = (gamestate & 0x40U) >> 6;
-	sn_permit = (gamestate & 0x80U) == 0x80U;
+	sn_permit = (gamestate & 0x80U) == 0x80U;	
 
+	// Since v1.0.0
+	sn_gamemode = (gamestate & 0x700u) >> 8;			// 3 bits
+	sn_colourset = (gamestate & 0x1800u) >> 11;		// 2 bits
+	sn_timer = (gamestate & 0x6000u) >>  13;			// 2 bits
+	sn_allowteams = (gamestate & 0x8000u) == 0x8000u;	//
+
+	// TODO: allocate more bits to packet ID, less to game ID
 	sn_gameid = DecodeUint16( 0x4E );
-	sn_colourid = DecodeUint16( 0x50 );
+
+	// Extra '1 bytes left to do something with. then thats it, no more data =(
 
 	// Events ==========================================================================================================
 
-	if( !sn_permit )
-	{
-		// EV: 0
-
-		markerObj.SetActive( false );
-		devhit.SetActive( false );
-		guideline.SetActive( false );
-	}
-
-	if( sn_gameid > sn_gameid_prv )
+	if( sn_gameid > sn_gameid_prv && !sn_gameover )
 	{
 		// EV: 1
+		FRP( FRP_YES + " .EV: 1 (sn_gameid > sn_gameid_prv) -> NewGame" + FRP_END );
 
 		NewGameLocal();
 	}
@@ -2101,51 +2456,7 @@ public void NetRead()
 	if( sn_turnid != sn_turnid_prv )
 	{
 		// EV: 2
-
-		#if HT8B_DEBUGGER
-		FRP( FRP_LOW + "Ownership changed" + FRP_END );
-		#endif
-
-		// Fullfil ownership transfer early
-		// Technically this is not needed with auto-switch mechanism, however its currently
-		// not implemented anywhere else when a turn switch is made and both players are
-		// already holding the respective cues, its not gonna let a player play cause
-		// he doesnt have ownership of the script object
-		//
-		// TODO: Polish the auto-yoink system.
-
-		if( api_players[ sn_turnid ] == Networking.LocalPlayer )
-		{
-			#if HT8B_DEBUGGER
-			FRP( FRP_YES + "Transfered to local" + FRP_END );
-			#endif
-
-			if( sn_simulating )
-			{
-				// In THEORY this should never ever be hit, but there might be an edge case
-				#if HT8B_DEBUGGER
-				FRP( FRP_ERR + "Remote simulating when ownership transfer attempt was made... script is deadlocked! contact harry!" + FRP_END );
-				#endif
-			}
-			else
-			{
-				// Give our local player permission to play his turn
-				Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
-					
-				// Sort out gamestate
-				Owner_NewTurn();
-					
-				// Not sure why these were called ?
-				// NetPack( sn_turnid );
-				// NetRead();
-			}
-		}
-		else
-		{
-			#if HT8B_DEBUGGER
-			FRP( FRP_LOW + "Transfered to remote" + FRP_END );
-			#endif
-		}
+		FRP( FRP_YES + " .EV: 2 (sn_turnid != sn_turnid_prv) -> NewTurn" + FRP_END );
 
 		OnTurnChangeLocal();
 	}
@@ -2154,6 +2465,7 @@ public void NetRead()
 	if( sn_open_prv && !sn_open )
 	{
 		// EV: 3
+		FRP( FRP_YES + " .EV: 3 (sn_open_prv && !sn_open) -> DisplaySet" + FRP_END );
 
 		DisplaySetLocal();
 	}
@@ -2162,14 +2474,74 @@ public void NetRead()
 	if(!sn_gameover_prv && sn_gameover)
 	{
 		// EV: 4
+		FRP( FRP_YES + " .EV: 4 (!sn_gameover_prv && sn_gamemover) -> Gameover" + FRP_END );
 
 		GameOverLocal();
 	}
 
-	// Coloursets
-	if(sn_colourid_prv != sn_colourid)
+	// Effects colliders need to be turned off when not simulating
+	// to improve pickups being glitchy
+	if( sn_simulating )
 	{
-		UpdateColourSources();
+		fxColliderBase.SetActive( true );
+	}
+	else
+	{
+		fxColliderBase.SetActive( false );
+	}
+
+	// Check this every read
+	// Its basically 'turn start' event
+	if( sn_permit )
+	{
+		bool isOurTurn = (local_playerid >= 0) && (local_teamid == sn_turnid);
+		
+		// Check if teammate placed the positioner
+		if( !sn_foul && sn_foul_prv )
+		{
+			FRP( FRP_YES + " .EV: 3 (!sn_foul && sn_foul_prv && sn_permit) -> Marker placed" + FRP_END );
+
+			isReposition = false;
+			markerObj.SetActive( false );
+		}
+
+		if( isOurTurn )
+		{
+			// Update for desktop
+			#if !HT_QUEST
+			_dk_AllowHit();
+			#endif
+		}
+
+		if( sn_gamemode == 1 )
+		{
+			int target = _LowestBall( sn_pocketed );
+
+			marker9ball.SetActive( true );
+			marker9ball.transform.localPosition = new Vector3(
+
+				ball_co[ target ].x,
+				0.0f,
+				ball_co[ target ].y
+
+			);
+		}
+
+		RackBalls();
+
+		// Reset rotation since guideline is parented.
+		// TODO: maybe just translate guide manually??
+		balls_render[0].transform.rotation = Quaternion.identity;
+
+		if( sn_timer > 0 && !timer_running )
+		{
+			_TimerReset();
+		}
+	}
+	else
+	{
+		marker9ball.SetActive( false );
+		timer_running = false;
 	}
 
 	UpdateScoreCardLocal();
@@ -2242,7 +2614,7 @@ void FRP( string ln )
 		FRP_LEN = FRP_MAX;
 	}
 
-	string output = "ht8b 0.3.0a ";
+	string output = "ht8b 1.0.0aa ";
 		
 	// Add information about game state:
 	output += Networking.IsOwner(Networking.LocalPlayer, this.gameObject) ? 
@@ -2253,7 +2625,7 @@ void FRP( string ln )
 		"<color=\"#95a2b8\">sim(</color> <color=\"#4287F5\">ACTIVE</color> <color=\"#95a2b8\">)</color> ":
 		"<color=\"#95a2b8\">sim(</color> <color=\"#678AC2\">PAUSED</color> <color=\"#95a2b8\">)</color> ";
 
-	VRCPlayerApi currentOwner = api_players[ sn_turnid ];
+	VRCPlayerApi currentOwner = Networking.GetOwner( this.gameObject );
 	output += "<color=\"#95a2b8\">player(</color> <color=\"#4287F5\">"+ (currentOwner != null? currentOwner.displayName: "[null]") + ":" + sn_turnid + "</color> <color=\"#95a2b8\">)</color>";
 
 	output += "\n---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n";
