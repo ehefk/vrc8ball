@@ -1,29 +1,34 @@
 # VRChat / Harry_T 8 Ball source mirror
 
-![](https://i.imgur.com/hb38Zs0.jpg)
+![](https://i.imgur.com/3cHrbf1.jpg)
 
-## Quest Status:
-kinda working a bit
-
-### Bugs / Feature requests:
+### Bugs / Feature requests
 Please feel free to submit anything to the issues page here
 
-### Source files:
+### Source files
 (tab size: 3, a lot of the code doc relys on this)
 
-Main:
-[ht8b.cs](https://github.com/Terri00/vrc8ball/blob/master/Assets/harry_t/us/ht8b.cs?ts=3)
+### For World Creators
+This project can be downloaded from [The releases page](https://github.com/Terri00/vrc8ball/releases)
 
-Cue:
-[ht8b_cue.cs](https://github.com/Terri00/vrc8ball/blob/master/Assets/harry_t/us/ht8b_cue.cs?ts=3), 
-[ht8b_otherhand.cs](https://github.com/Terri00/vrc8ball/blob/master/Assets/harry_t/us/ht8b_otherhand.cs?ts=3)
+#### Dependencies / Setup
+- Install VRCSDK 3
+- Install [Udon Sharp](https://github.com/MerlinVR/UdonSharp)
+- Import the package
+
+#### Quest / PC Toggles
+The project includes some small scripts to change / toggle stuff between quest/pc versions
+
+It has to be manually changed
 
 
-### For creators:
-Status: no stable prefab build released currently. eta: like a week or so
+On the top of the prefab there is one:
 
-The Releases page will include core art assets and game scripts, and can be put in your own world. Credit is not required and everything is licensed under gpl 3.0. All content including art was created by myself.
+![](https://i.imgur.com/HPtMBiH.png)
 
-~~**Important Note**: Ht8b scripting and shaders **rely** on the assumption of the pool table being at the coordinates: 0,0,0. Placing it elsewhere in the world will lead to broken behaviour~~
+And in the scene `__MAIN__` also has one of these scripts
 
-*fixed this garbage*
+#### Caveats
+HT8B once again has a position requirement, this time its that the Y position in the scene of this prefab should equal 0.0 
+
+This is due to one of the shaders (the contact shadow one)
