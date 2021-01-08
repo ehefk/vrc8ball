@@ -10,7 +10,7 @@ public class ht8b_otherhand : UdonSharpBehaviour {
 
 Vector3 originalDelta;
 bool isHolding = false;
-public bool bOtherHold = false;   // Primary is being held
+public bool bOtherHold = false;  // Primary is being held
 
 private void OnPickup()
 {

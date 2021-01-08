@@ -2,29 +2,29 @@
  https://www.harrygodden.com
 
  live:   wrld_08badc69-7665-4dc5-8243-3867455dc17c
- dev:      wrld_9497c2da-97ee-4b2e-9f82-f9adb024b6fe
+ dev:    wrld_9497c2da-97ee-4b2e-9f82-f9adb024b6fe
 
  Update log:
-   16.12.2020 (0.1.3a)   -   Fix for new game, wrong local turn colour
-                        -   Fix for not losing match when scratch on pot 8 ball            ( Thanks: Photographotter, Mystical )
-                        -   Added permission info to console when fail reset
-   17.12.2020 (0.2.0a)   -   Predictive physics for cue ball
-                        -  Fix for not winning when sink 8, and objective on same turn      ( Thanks: Rosy )
-                        -   Reduced code spaghet in decode routine
-                        -   Improved algorithm for post-game state checking, should lend
+   16.12.2020 (0.1.3a)  -  Fix for new game, wrong local turn colour
+                        -  Fix for not losing match when scratch on pot 8 ball            ( Thanks: Photographotter, Mystical )
+                        -  Added permission info to console when fail reset
+   17.12.2020 (0.2.0a)  -  Predictive physics for cue ball
+                        -  Fix for not winning when sink 8, and objective on same turn    ( Thanks: Rosy )
+                        -  Reduced code spaghet in decode routine
+                        -  Improved algorithm for post-game state checking, should lend
                            to easier implementation of optional rules.
-                        -   Allow colour switching between UK/USA/Default colour sets
+                        -  Allow colour switching between UK/USA/Default colour sets
                         -  Grips change colour based on which turn it is
-               0.3.0a   -   Added desktop mode
-                        -   Sink opponents ball = loss turn
-                        -   Removed coloursets
-               0.3.1a   -   Desktop QOL
-               0.3.2a   -   Reduced sensitivity
-                        -   Added pad bytes
-               0.3.7a   -   Quest support
-               0.3.8a   -   Switched network string to base64 encoded
-                        -   Changed initial break setup
-               1.0.0      -   First full Release
+               0.3.0a   -  Added desktop mode
+                        -  Sink opponents ball = loss turn
+                        -  Removed coloursets
+               0.3.1a   -  Desktop QOL
+               0.3.2a   -  Reduced sensitivity
+                        -  Added pad bytes
+               0.3.7a   -  Quest support
+               0.3.8a   -  Switched network string to base64 encoded
+                        -  Changed initial break setup
+               1.0.0    -  First full Release
 
  Networking Model Information:
    
@@ -62,39 +62,39 @@
 
    - Ball ID's are designed around bitmasks and are as follows:
 
-   byte | Byte 0                                          | Byte 1                                          |
-   bit  | x80 . x40 . x20 . x10 . x08 . x04 . x02   | x1 .. x80 . x40 . x20 . x10 . x08 . x04 | x02 | x01 |
+   byte | Byte 0                                         | Byte 1                                        |
+   bit  | x80 . x40 . x20 . x10 . x08 . x04 . x02  | x1 .. x80 . x40 . x20 . x10 . x08 . x04 | x02 | x01 |
    ball | 15    14    13    12    11    10    9    |  7     6     5     4     3    2     1   |  8  | cue |
 
  Networking Layout:
 
    Total size: 78 bytes over network // 39 C# wchar
  
-   Address      What                  Data type
+   Address     What                 Data type
   
-   [ 0x00  ]   ball positions         (compressed quantized vec2's)
-   [ 0x40  ]   cue ball velocity      ^
-   [ 0x44  ]   cue ball angular vel   ^
+   [ 0x00  ]   ball positions       (compressed quantized vec2's)
+   [ 0x40  ]   cue ball velocity    ^
+   [ 0x44  ]   cue ball angular vel ^
 
-   [ 0x48  ]   sn_pocketed            uint16 bitmask ( above table )
+   [ 0x48  ]   sn_pocketed          uint16 bitmask ( above table )
    
-   [ 0x4A  ]   game state flags      | bit #   | mask   | what            | 
-                                    | 0      | 0x1      | sn_simulating   |
-                                    | 1      | 0x2      | sn_turnid         |
-                                    | 2      | 0x4      | sn_foul         |
-                                    | 3      | 0x8      | sn_open         |
-                                    | 4      | 0x10   | sn_playerxor      |
-                                    | 5      | 0x20   | sn_gameover      |
-                                    | 6      | 0x40   | sn_winnerid      |
-                                    | 7      | 0x80   | sn_permit         |
-                                    | 8-10   | 0x700   | sn_gamemode      |
-                                    | 11-12   | 0x1800 | sn_colourset      |
-                                    | 13-14   | 0x6000 | sn_timer         |
-                                    | 15      | 0x8000 | sn_allowteams   |
+   [ 0x4A  ]   game state flags     | bit #  | mask   | what            | 
+                                    | 0      | 0x1    | sn_simulating   |
+                                    | 1      | 0x2    | sn_turnid       |
+                                    | 2      | 0x4    | sn_foul         |
+                                    | 3      | 0x8    | sn_open         |
+                                    | 4      | 0x10   | sn_playerxor    |
+                                    | 5      | 0x20   | sn_gameover     |
+                                    | 6      | 0x40   | sn_winnerid     |
+                                    | 7      | 0x80   | sn_permit       |
+                                    | 8-10   | 0x700  | sn_gamemode     |
+                                    | 11-12  | 0x1800 | sn_colourset    |
+                                    | 13-14  | 0x6000 | sn_timer        |
+                                    | 15     | 0x8000 | sn_allowteams   |
                                     
-   [ 0x4C  ]   packet #               uint16
+   [ 0x4C  ]   packet #             uint16
    [ 0x4E  ]   gameid               uint16
-   [ 0x50  ]   <reserved>            uint16
+   [ 0x50  ]   <reserved>           uint16
 
  Physics Implementation:
    
@@ -154,34 +154,34 @@ public class ht8b : UdonSharpBehaviour {
 #if HT_QUEST
 const float k_MAX_DELTA = 0.075f;                  // Maximum steps/frame ( 5 ish )
 #else
-const float k_MAX_DELTA = 0.1f;                  // Maximum steps/frame ( 8 )
+const float k_MAX_DELTA = 0.1f;                 // Maximum steps/frame ( 8 )
 #endif
 
 // Physics calculation constants (measurements are in meters)
 
-const float k_FIXED_TIME_STEP = 0.0125f;               // time step in seconds per iteration
+const float k_FIXED_TIME_STEP = 0.0125f;              // time step in seconds per iteration
 const float k_TIME_ALPHA = 50.0f;                     // (unused) physics interpolation
-const float k_TABLE_WIDTH      = 1.0668f;               // horizontal span of table
-const float k_TABLE_HEIGHT      = 0.6096f;               // vertical span of table
-const float k_BALL_DIAMETRE   = 0.06f;                  // width of ball
-const float k_BALL_PL_X         = 0.03f;                  // break placement X
-const float k_BALL_PL_Y         = 0.05196152422f;         // Break placement Y
-const float k_BALL_1OR         = 16.66666666666666f;   // 1 over ball radius
-const float k_BALL_RSQR         = 0.0009f;               // ball radius squared
-const float k_BALL_DSQR         = 0.0036f;               // ball diameter squared
-const float k_BALL_DSQRPE      = 0.003481f;            // ball diameter squared plus epsilon
-const float k_POCKET_RADIUS   = 0.09f;                  // Full diameter of pockets (exc ball radi)
+const float k_TABLE_WIDTH     = 1.0668f;              // horizontal span of table
+const float k_TABLE_HEIGHT    = 0.6096f;              // vertical span of table
+const float k_BALL_DIAMETRE   = 0.06f;                // width of ball
+const float k_BALL_PL_X       = 0.03f;                // break placement X
+const float k_BALL_PL_Y       = 0.05196152422f;       // Break placement Y
+const float k_BALL_1OR        = 16.66666666666666f;   // 1 over ball radius
+const float k_BALL_RSQR       = 0.0009f;              // ball radius squared
+const float k_BALL_DSQR       = 0.0036f;              // ball diameter squared
+const float k_BALL_DSQRPE     = 0.003481f;            // ball diameter squared plus epsilon
+const float k_POCKET_RADIUS   = 0.09f;                // Full diameter of pockets (exc ball radi)
 
-const float k_1OR2            = 0.70710678118f;         // 1 over root 2 (normalize +-1,+-1 vector)
-const float k_1OR5            = 0.4472135955f;         // 1 over root 5 (normalize +-1,+-2 vector)
+const float k_1OR2            = 0.70710678118f;       // 1 over root 2 (normalize +-1,+-1 vector)
+const float k_1OR5            = 0.4472135955f;        // 1 over root 5 (normalize +-1,+-2 vector)
 
-const float k_POCKET_DEPTH      = 0.04f;                  // How far back (roughly) do pockets absorb balls after this point
-const float k_MIN_VELOCITY      = 0.00005625f;            // SQUARED
+const float k_POCKET_DEPTH    = 0.04f;                // How far back (roughly) do pockets absorb balls after this point
+const float k_MIN_VELOCITY    = 0.00005625f;          // SQUARED
 
-const float k_FRICTION_EFF      = 0.99f;                  // How much to multiply velocity by each update
+const float k_FRICTION_EFF    = 0.99f;                // How much to multiply velocity by each update
 
-const float k_SPOT_POSITION_X = 0.5334f;               // First X position of the racked balls
-const float k_RACK_HEIGHT      = -0.0702f;               // Rack position on Y axis
+const float k_SPOT_POSITION_X = 0.5334f;              // First X position of the racked balls
+const float k_RACK_HEIGHT     = -0.0702f;             // Rack position on Y axis
 
 #if HT_QUEST
 uint ANDROID_UNIFORM_CLOCK = 0x00u;
@@ -189,84 +189,84 @@ uint ANDROID_CLOCK_DIVIDER = 0x8u;
 #endif
 
 // Colour constants
-Color k_tableColourBlue      = new Color( 0.0f, 0.75f, 1.75f, 1.0f ); // Presets ..
-Color k_tableColourOrange   = new Color( 1.75f, 0.25f, 0.0f, 1.0f );
-Color k_tableColourRed      = new Color( 1.2f, 0.0f, 0.0f, 1.0f );
-Color k_tableColorWhite      = new Color( 1.0f, 1.0f, 1.0f, 1.0f );
+Color k_tableColourBlue    = new Color( 0.0f, 0.75f, 1.75f, 1.0f ); // Presets ..
+Color k_tableColourOrange  = new Color( 1.75f, 0.25f, 0.0f, 1.0f );
+Color k_tableColourRed     = new Color( 1.2f, 0.0f, 0.0f, 1.0f );
+Color k_tableColorWhite    = new Color( 1.0f, 1.0f, 1.0f, 1.0f );
 Color k_tableColourBlack   = new Color( 0.01f, 0.01f, 0.01f, 1.0f );
-Color k_tableColourYellow   = new Color( 2.0f, 1.0f, 0.0f, 1.0f );
-Color k_tableColourPink      = new Color( 2.0f, 0.0f, 1.5f, 1.0f );
+Color k_tableColourYellow  = new Color( 2.0f, 1.0f, 0.0f, 1.0f );
+Color k_tableColourPink    = new Color( 2.0f, 0.0f, 1.5f, 1.0f );
 Color k_tableColourGreen   = new Color( 0.0f, 2.0f, 0.0f, 1.0f );
 Color k_tableColourLBlue   = new Color( 0.3f, 0.6f, 1.0f, 1.0f );
 
-Color k_markerColourOK      = new Color( 0.0f, 1.0f, 0.0f, 1.0f );
-Color k_markerColourNO      = new Color( 1.0f, 0.0f, 0.0f, 1.0f );
+Color k_markerColourOK     = new Color( 0.0f, 1.0f, 0.0f, 1.0f );
+Color k_markerColourNO     = new Color( 1.0f, 0.0f, 0.0f, 1.0f );
 
 Color k_gripColourActive   = new Color( 0.0f, 0.5f, 1.1f, 1.0f );
 Color k_gripColourInactive = new Color( 0.34f, 0.34f, 0.34f, 1.0f );
 
-Color k_fabricColour_gray   = new Color( 0.3f, 0.3f, 0.3f, 1.0f );
+Color k_fabricColour_gray  = new Color( 0.3f, 0.3f, 0.3f, 1.0f );
 Color k_fabricColour_red   = new Color( 0.9f, 0.2f, 0.1f, 1.0f );
-Color k_fabricColour_blue   = new Color( 0.1f, 0.6f, 1.0f, 1.0f );
+Color k_fabricColour_blue  = new Color( 0.1f, 0.6f, 1.0f, 1.0f );
 Color k_fabricColour_white = new Color( 0.8f, 0.8f, 0.8f, 1.0f );
 
 Color k_aimColour_aim      = new Color( 0.7f, 0.7f, 0.7f, 1.0f );
 Color k_aimColour_locked   = new Color( 1.0f, 1.0f, 1.0f, 1.0f );
 
-const string FRP_LOW =   "<color=\"#ADADAD\">";
-const string FRP_ERR =   "<color=\"#B84139\">";
+const string FRP_LOW =  "<color=\"#ADADAD\">";
+const string FRP_ERR =  "<color=\"#B84139\">";
 const string FRP_WARN = "<color=\"#DEC521\">";
-const string FRP_YES =   "<color=\"#69D128\">";
-const string FRP_END =   "</color>";
+const string FRP_YES =  "<color=\"#69D128\">";
+const string FRP_END =  "</color>";
 
 #endregion
 
 #region R_INSPECTOR
 
 // Other behaviours
-[SerializeField]         ht8b_menu      menuController;
-[SerializeField]         ht8b_cue[]      gripControllers;
+[SerializeField]        ht8b_menu      menuController;
+[SerializeField]        ht8b_cue[]     gripControllers;
 
 // GameObjects
 [SerializeField] public GameObject[]   balls_render;
-[SerializeField] public GameObject      cuetip;
-[SerializeField]         GameObject      guideline;
-[SerializeField]         GameObject      guidefspin;
-[SerializeField]         GameObject      devhit;
-[SerializeField]         GameObject[]   playerTotems;
-[SerializeField]         GameObject[]   cueTips;
-[SerializeField]         GameObject      gametable;
-[SerializeField]         GameObject      infBaseTransform;
-[SerializeField]         GameObject      markerObj;
-[SerializeField]         GameObject      infHowToStart;
-[SerializeField]         GameObject      marker9ball;
-[SerializeField]         GameObject      tableoverlayUI;
-[SerializeField]         GameObject      fxColliderBase;
+[SerializeField] public GameObject     cuetip;
+[SerializeField]        GameObject     guideline;
+[SerializeField]        GameObject     guidefspin;
+[SerializeField]        GameObject     devhit;
+[SerializeField]        GameObject[]   playerTotems;
+[SerializeField]        GameObject[]   cueTips;
+[SerializeField]        GameObject     gametable;
+[SerializeField]        GameObject     infBaseTransform;
+[SerializeField]        GameObject     markerObj;
+[SerializeField]        GameObject     infHowToStart;
+[SerializeField]        GameObject     marker9ball;
+[SerializeField]        GameObject     tableoverlayUI;
+[SerializeField]        GameObject     fxColliderBase;
 
 // Texts
-[SerializeField]         Text            ltext;
-[SerializeField]         Text[]         playerNames;
-[SerializeField]         Text            infText;
-[SerializeField]         Text            infReset;
+[SerializeField]        Text           ltext;
+[SerializeField]        Text[]         playerNames;
+[SerializeField]        Text           infText;
+[SerializeField]        Text           infReset;
 
 // Renderers
-[SerializeField] public   Renderer         scoreCardRenderer;
-[SerializeField]         Renderer[]      cueRenderers;
+[SerializeField] public Renderer       scoreCardRenderer;
+[SerializeField]        Renderer[]     cueRenderers;
 
 // Materials
-[SerializeField]         Material         guidelineMat;
-[SerializeField] public Material         ballMaterial;
-[SerializeField]         Material[]      CueGripMaterials;
-[SerializeField] public Material         tableMaterial;
-[SerializeField]         Material         markerMaterial;
+[SerializeField]        Material       guidelineMat;
+[SerializeField] public Material       ballMaterial;
+[SerializeField]        Material[]     CueGripMaterials;
+[SerializeField] public Material       tableMaterial;
+[SerializeField]        Material       markerMaterial;
 
 [SerializeField] public Texture[]      textureSets;
 
 // Audio
-[SerializeField]         AudioClip      snd_Intro;
-[SerializeField]         AudioClip      snd_Sink;
-[SerializeField]         AudioClip[]      snd_Hits;
-[SerializeField]         AudioClip      snd_NewTurn; 
+[SerializeField]        AudioClip      snd_Intro;
+[SerializeField]        AudioClip      snd_Sink;
+[SerializeField]        AudioClip[]    snd_Hits;
+[SerializeField]        AudioClip      snd_NewTurn; 
 
 #endregion
 
@@ -275,24 +275,24 @@ AudioSource aud_main;
 
 #region R_GAMESTATE
 
-[UdonSynced]   private string netstr;      // dumpster fire
+[UdonSynced]   private string netstr;     // dumpster fire
                private string netstr_prv;
                byte[]         net_data = new byte[0x52];
 
 // Networked gamestate
 //  data positions are marked as <#ushort>:<#bit> (<hexmask>) <description>
 
-uint   sn_pocketed      = 0x00U;      // 18:0 (0xffff)   Each bit represents each ball, if it has been pocketed or not
-bool   sn_simulating   = false;      // 19:0 (0x01)      True whilst balls are rolling
-uint   sn_turnid      = 0x00U;      // 19:1 (0x02)      Whos turn is it, 0 or 1
-bool  sn_foul         = false;      // 19:2 (0x04)      End-of-turn foul marker
-bool  sn_open         = true;      // 19:3 (0x08)      Is the table open?
-uint  sn_playerxor   = 0x00;      // 19:4 (0x10)      What colour the players have chosen
-bool  sn_gameover      = true;      // 19:5 (0x20)      Game is complete
-uint  sn_winnerid      = 0x00U;      // 19:6 (0x40)      Who won the game if sn_gameover is set
+uint  sn_pocketed    = 0x00U;    // 18:0 (0xffff)  Each bit represents each ball, if it has been pocketed or not
+bool  sn_simulating  = false;    // 19:0 (0x01)    True whilst balls are rolling
+uint  sn_turnid      = 0x00U;    // 19:1 (0x02)    Whos turn is it, 0 or 1
+bool  sn_foul        = false;    // 19:2 (0x04)    End-of-turn foul marker
+bool  sn_open        = true;     // 19:3 (0x08)    Is the table open?
+uint  sn_playerxor   = 0x00;     // 19:4 (0x10)    What colour the players have chosen
+bool  sn_gameover    = true;     // 19:5 (0x20)    Game is complete
+uint  sn_winnerid    = 0x00U;    // 19:6 (0x40)    Who won the game if sn_gameover is set
 
 [HideInInspector]
-public bool   sn_permit= false;      // 19:7 (0x80)      Permission for player to play
+public bool sn_permit= false;    // 19:7 (0x80)    Permission for player to play
 
 // Modifiable -- ht8b_menu.cs
 
@@ -302,15 +302,15 @@ public bool   sn_permit= false;      // 19:7 (0x80)      Permission for player t
 public
 #endif
 
-                           uint sn_gamemode   = 0;   // 19:8 (0x700)   Gamemode ID 3 bit   { 0: 8 ball, 1: 9 ball, 2+: undefined }
-[HideInInspector] public   uint sn_colourset   = 0;   // 19:11 (0x1800) Colourset 2 bit   { 0: blue/orange, 1: pink/green, 2: UK Solids, 3: USA Standard }
-[HideInInspector] public   uint sn_timer      = 0;   // 19:13 (0x6000)   Timer ID 2 bit      { 0: inf, 1: 30s, 2: 60s, 3: undefined }
-                           bool sn_teams = false;   // 19:15 (0x8000)   Teams on/off (1 bit)
+                           uint sn_gamemode  = 0;  // 19:8 (0x700)   Gamemode ID 3 bit { 0: 8 ball, 1: 9 ball, 2+: undefined }
+[HideInInspector] public   uint sn_colourset = 0;  // 19:11 (0x1800) Colourset 2 bit   { 0: blue/orange, 1: pink/green, 2: UK Solids, 3: USA Standard }
+[HideInInspector] public   uint sn_timer     = 0;  // 19:13 (0x6000) Timer ID 2 bit    { 0: inf, 1: 30s, 2: 60s, 3: undefined }
+                           bool sn_teams = false;  // 19:15 (0x8000) Teams on/off (1 bit)
 
-ushort sn_packetid   = 0;         // 20:0 (0xffff)   Current packet number, used for locking updates so we dont accidently go back.
-                                 //                     this behaviour was observed on some long connections so its necessary
-ushort sn_gameid      = 0;         // 21:0 (0xffff)   Game number
-ushort sn_gmspec      = 0;         // 22:0 (0xffff)   Game mode specific information
+ushort sn_packetid   = 0;        // 20:0 (0xffff)  Current packet number, used for locking updates so we dont accidently go back.
+                                 //                   this behaviour was observed on some long connections so its necessary
+ushort sn_gameid     = 0;        // 21:0 (0xffff)  Game number
+ushort sn_gmspec     = 0;        // 22:0 (0xffff)  Game mode specific information
 
 // Cannot making a struct in C#, therefore values are duplicated
 
@@ -337,30 +337,30 @@ ushort sn_gameid_prv;
 
 // Local gamestates
 [HideInInspector]
-public bool   sn_armed   = false;      // Player is hitting
-bool   sn_updatelock   = false;      // We are waiting for our local simulation to finish, before we unpack data
-int   sn_firsthit      = 0;         // The first ball to be hit by cue ball
-bool   sn_oursim      = false;      // If the simulation was initiated by us, only set from update
+public bool sn_armed = false;    // Player is hitting
+bool  sn_updatelock  = false;    // We are waiting for our local simulation to finish, before we unpack data
+int   sn_firsthit    = 0;        // The first ball to be hit by cue ball
+bool  sn_oursim      = false;    // If the simulation was initiated by us, only set from update
 
-byte   sn_wins0         = 0;         // Wins for player 0 (unused)
-byte   sn_wins1         = 0;         // Wins for player 1 (unused)
+byte  sn_wins0       = 0;        // Wins for player 0 (unused)
+byte  sn_wins1       = 0;        // Wins for player 1 (unused)
 
-float   introAminTimer = 0.0f;      // Ball dropper timer
+float introAminTimer = 0.0f;     // Ball dropper timer
 
-bool   ballsMoving      = false;      // Tracker variable to see if balls are still on the go
+bool  ballsMoving    = false;    // Tracker variable to see if balls are still on the go
 
-bool   isReposition   = false;         // Repositioner is active
-float repoMaxX         = k_TABLE_WIDTH;   // For clamping to table or set lower for kitchen
+bool  isReposition   = false;       // Repositioner is active
+float repoMaxX       = k_TABLE_WIDTH;  // For clamping to table or set lower for kitchen
 
-bool gameIdle         = true;      // Set by NewGameLocal / EndGameLocal
+bool gameIdle        = true;     // Set by NewGameLocal / EndGameLocal
 
-float timer_end      = 0.0f;      // What should the timer run out at
-float timer_recip      = 0.0f;      // 1 over time limit
-bool   timer_running   = false;
+float timer_end      = 0.0f;     // What should the timer run out at
+float timer_recip    = 0.0f;     // 1 over time limit
+bool  timer_running  = false;
 
 // Values that will get sucked in from the menu
 [HideInInspector] public int local_playerid = -1;
-                        uint local_teamid = 0U;      // Interpreted value
+                        uint local_teamid = 0U;    // Interpreted value
 
 #endregion
 
@@ -376,7 +376,7 @@ public
 #endif
 Vector2[] ball_vl = new Vector2[16];   // Current velocities
 
-Vector2    cue_avl = Vector2.zero;      // Cue ball angular velocity
+Vector2   cue_avl = Vector2.zero;      // Cue ball angular velocity
 
 #endregion
 
@@ -406,7 +406,7 @@ const string uniform_cue_colour = "_ReColor";
 #if MULTIGAMES_PORTAL
 
 // Main
-[SerializeField]   Material portal_dispmat_m;
+[SerializeField]  Material portal_dispmat_m;
 
                   Material target_surface;      // 'pointer'  mat
 
@@ -657,8 +657,8 @@ void BallPortal( int id )
 
 #region R_VFX
 
-Color tableSrcColour         = new Color( 1.0f, 1.0f, 1.0f, 1.0f );   // Runtime target colour
-Color tableCurrentColour   = new Color( 1.0f, 1.0f, 1.0f, 1.0f );   // Runtime actual colour
+Color tableSrcColour       = new Color( 1.0f, 1.0f, 1.0f, 1.0f ); // Runtime target colour
+Color tableCurrentColour   = new Color( 1.0f, 1.0f, 1.0f, 1.0f ); // Runtime actual colour
 
 // 'Pointer' colours.
 Color pColour0;      // Team 0
@@ -719,13 +719,13 @@ void _vis_showballs()
 
 public void _vis_updatecoloursources()
 {
-   if( sn_gamemode == 1u )   // 9 Ball / USA colours
+   if( sn_gamemode == 1u ) // 9 Ball / USA colours
    {
       pColour0 = k_tableColourLBlue;
       pColour1 = k_tableColourLBlue;
       pColour2 = k_tableColourLBlue;
 
-      pColourErr = k_tableColourBlack;   // No error effect
+      pColourErr = k_tableColourBlack; // No error effect
 
       // 9 ball only uses one colourset / cloth colour
       ballMaterial.SetTexture( "_MainTex", textureSets[ 3 ] );
@@ -736,22 +736,22 @@ public void _vis_updatecoloursources()
       pColourErr = k_tableColourRed;
       pColour2 = k_tableColorWhite;
 
-      if( sn_colourset == 0 )         // Blue / Orange
+      if( sn_colourset == 0 )       // Blue / Orange
       {
          pColour0 = k_tableColourBlue;
          pColour1 = k_tableColourOrange;
       }
-      else if( sn_colourset == 1 )   // pink / green
+      else if( sn_colourset == 1 )  // pink / green
       {
          pColour0 = k_tableColourPink;
          pColour1 = k_tableColourGreen;
       }
-      else if( sn_colourset == 2 )   // UK Red / Yellow
+      else if( sn_colourset == 2 )  // UK Red / Yellow
       {
          pColour0 = k_tableColourRed;
          pColour1 = k_tableColourYellow;
       }
-      else                           // US doesnt have border colours
+      else                          // US doesnt have border colours
       {
          pColour0 = k_tableColourBlack;
          pColour1 = k_tableColourBlack;
@@ -766,12 +766,12 @@ public void _vis_updatecoloursources()
 
 void _timer_reset()
 {
-   if( sn_timer == 1 )   // 30s
+   if( sn_timer == 1 )  // 30s
    {
       timer_end = Time.timeSinceLevelLoad + 30.0f;
       timer_recip = 0.03333333333f;
    }
-   else                  // 60s
+   else                 // 60s
    {
       timer_end = Time.timeSinceLevelLoad + 60.0f;
       timer_recip = 0.01666666666f;
@@ -817,7 +817,7 @@ void _onlocal_gameover()
    tableoverlayUI.SetActive( false );
 
 #if !HT_QUEST
-   _vis_rackballs();   // To make sure rigidbodies are completely off
+   _vis_rackballs(); // To make sure rigidbodies are completely off
 #endif
 
    isReposition = false;
@@ -983,7 +983,7 @@ void _onlocal_sim_end()
          deferLossCondition
       ;
 
-      if( sn_gamemode == 0u )   // Standard 8 ball
+      if( sn_gamemode == 0u ) // Standard 8 ball
       {
          isObjectiveSink = (sn_pocketed & bmask) > (sn_pocketed_prv & bmask);
          isOpponentSink = (sn_pocketed & emask) > (sn_pocketed_prv & emask);
@@ -998,7 +998,7 @@ void _onlocal_sim_end()
          
          deferLossCondition = is8Sink;
       } 
-      else if( sn_gamemode == 1u )   // 9 ball
+      else if( sn_gamemode == 1u )  // 9 ball
       {
          // Rules are from: https://www.youtube.com/watch?v=U0SbHOXCtFw
 
@@ -1144,7 +1144,7 @@ void _apply_cue_access()
          gripControllers[ 1 ]._access_allow();
          gripControllers[ 0 ]._access_deny();
       }
-      else                                             // Local player is 0, or 2
+      else                                            // Local player is 0, or 2
       {
          gripControllers[ 0 ]._access_allow();
          gripControllers[ 1 ]._access_deny();
@@ -1179,7 +1179,7 @@ void _onlocal_newgame()
    _apply_cue_access();
 
    // TODO: move to function
-   if( sn_gamemode == 1u )   // 9 ball specific
+   if( sn_gamemode == 1u ) // 9 ball specific
    {
       scoreCardRenderer.gameObject.SetActive( false );
    }
@@ -1254,15 +1254,15 @@ void _onlocal_newgame()
 
 // Cue input tracking
 
-Vector3   cue_lpos;
-Vector3   cue_llpos;
-Vector3   cue_vdir;
-Vector2   cue_shotdir;
-float      cue_fdir;
+Vector3  cue_lpos;
+Vector3  cue_llpos;
+Vector3  cue_vdir;
+Vector2  cue_shotdir;
+float    cue_fdir;
 
 #if HT_QUEST
 #else
-public Vector3   dkTargetPos;            // Target for desktop aiming
+public Vector3 dkTargetPos;            // Target for desktop aiming
 #endif
 
 #if !HT_QUEST
@@ -1416,14 +1416,14 @@ void _phy_ball_table( int id )
 
    // REGIONS
    /*  
-      *  QUADS:                     SUBSECTION:            SUBSECTION:
+      *  QUADS:                     SUBSECTION:          SUBSECTION:
       *    zx, zy:                     zz:                  zw:
-      *                                                
-      *  o----o----o  +:  1         \_________/            \_________/
-      *  | -+ | ++ |  -: -1           |       /                    /  /
-      *  |----+----|                 -  |  +   |            -     /   |
-      *  | -- | +- |                    |      |                /  +  |
-      *  o----o----o                    |      |             /       |
+      *                                               
+      *  o----o----o  +:  1         \_________/          \_________/
+      *  | -+ | ++ |  -: -1           |       /                  /  /
+      *  |----+----|               -  |  +   |           -     /   |
+      *  | -- | +- |                  |      |               /  +  |
+      *  o----o----o                  |      |             /       |
       * 
       */
 
@@ -1928,7 +1928,7 @@ void _sn_cpyprev()
    sn_gameover_prv = sn_gameover;
    sn_gameid_prv = sn_gameid;
 
-   //sn_pocketed_prv = sn_pocketed;      this one needs to be independent 
+   //sn_pocketed_prv = sn_pocketed;    this one needs to be independent 
    //sn_simulating_prv = sn_simulating;
    //sn_foul_prv = sn_foul;
    //sn_playerxor_prv = sn_playerxor;
@@ -2443,7 +2443,7 @@ public void _tr_force_end()
       sn_simulating = false;
       sn_permit = false;
 
-      // sn_winnerid      = 0x00U;
+      // sn_winnerid    = 0x00U;
 
       // For good measure in case other clients trigger an event whilst owner
       sn_packetid += 2;
@@ -2532,20 +2532,20 @@ public void _netpack( uint _turnid )
 
    // Game state
    uint flags = 0x0U;                  // bit #
-   if( sn_simulating ) flags |= 0x1U;   // 0
-   flags |= _turnid << 1;               // 1
-   if( sn_foul ) flags |= 0x4U;         // 2
-   if( sn_open ) flags |= 0x8U;         // 3
+   if( sn_simulating ) flags |= 0x1U;  // 0
+   flags |= _turnid << 1;              // 1
+   if( sn_foul ) flags |= 0x4U;        // 2
+   if( sn_open ) flags |= 0x8U;        // 3
    flags |= sn_playerxor << 4;         // 4
    if( sn_gameover ) flags |= 0x20U;   // 5
-   flags |= sn_winnerid << 6;            // 6
-   if( sn_permit ) flags |= 0x80U;      // 7
+   flags |= sn_winnerid << 6;          // 6
+   if( sn_permit ) flags |= 0x80U;     // 7
 
    // Since v1.0.0
-   flags |= sn_gamemode << 8;            // 8  - 3 bits
-   flags |= sn_colourset << 11;         // 11 - 2 bits
+   flags |= sn_gamemode << 8;          // 8  - 3 bits
+   flags |= sn_colourset << 11;        // 11 - 2 bits
    flags |= sn_timer << 13;            // 13 - 2 bits
-   if( sn_teams ) flags |= 0x8000u;   // 15 - 1 bit
+   if( sn_teams ) flags |= 0x8000u; // 15 - 1 bit
 
    _encode_u16( 0x4A, (ushort)flags );
 
@@ -2626,13 +2626,13 @@ public void _netread()
    sn_playerxor = (gamestate & 0x10U) >> 4;
    sn_gameover = (gamestate & 0x20U) == 0x20U;
    sn_winnerid = (gamestate & 0x40U) >> 6;
-   sn_permit = (gamestate & 0x80U) == 0x80U;   
+   sn_permit = (gamestate & 0x80U) == 0x80U; 
 
    // Since v1.0.0
-   sn_gamemode = (gamestate & 0x700u) >> 8;         // 3 bits
-   sn_colourset = (gamestate & 0x1800u) >> 11;      // 2 bits
-   sn_timer = (gamestate & 0x6000u) >>  13;         // 2 bits
-   sn_teams = (gamestate & 0x8000u) == 0x8000u;   //
+   sn_gamemode = (gamestate & 0x700u) >> 8;        // 3 bits
+   sn_colourset = (gamestate & 0x1800u) >> 11;     // 2 bits
+   sn_timer = (gamestate & 0x6000u) >>  13;        // 2 bits
+   sn_teams = (gamestate & 0x8000u) == 0x8000u; //
 
    // TODO: allocate more bits to packet ID, less to game ID
    sn_gameid = _decode_u16( 0x4E );

@@ -17,11 +17,11 @@ using System;
 
 public class ht8b_menu : UdonSharpBehaviour{
 
-const string FRP_LOW =   "<color=\"#ADADAD\">";
-const string FRP_ERR =   "<color=\"#B84139\">";
+const string FRP_LOW =  "<color=\"#ADADAD\">";
+const string FRP_ERR =  "<color=\"#B84139\">";
 const string FRP_WARN = "<color=\"#DEC521\">";
-const string FRP_YES =   "<color=\"#69D128\">";
-const string FRP_END =   "</color>";
+const string FRP_YES =  "<color=\"#69D128\">";
+const string FRP_END =  "</color>";
 
 // UI materials
 [SerializeField] Material mat_high;
@@ -30,18 +30,18 @@ const string FRP_END =   "</color>";
 // UI element objects
 [SerializeField] GameObject loc_main;
 
-[SerializeField] MeshRenderer[]   ui_gamemodes;
-[SerializeField] MeshRenderer[]   ui_timelimits;
-[SerializeField] MeshRenderer[]   ui_joinbuttons;
-[SerializeField] MeshRenderer      ui_start;
+[SerializeField] MeshRenderer[]  ui_gamemodes;
+[SerializeField] MeshRenderer[]  ui_timelimits;
+[SerializeField] MeshRenderer[]  ui_joinbuttons;
+[SerializeField] MeshRenderer    ui_start;
 [SerializeField] GameObject      ui_newGame;
-[SerializeField] GameObject[]      ui_colour_selecters;
-[SerializeField] MeshRenderer[]   ui_teambuttons;
-[SerializeField] Text[]            ui_textplayers;
+[SerializeField] GameObject[]    ui_colour_selecters;
+[SerializeField] MeshRenderer[]  ui_teambuttons;
+[SerializeField] Text[]          ui_textplayers;
 [SerializeField] BoxCollider[]   lobby_owner_only;
 
 // Networking stuff
-[SerializeField] GameObject[]      gm_tokens;
+[SerializeField] GameObject[]    gm_tokens;
 [SerializeField] ht8b            main;
 
 // Visual
@@ -50,9 +50,9 @@ const string FRP_END =   "</color>";
 // Localize from ht8b.cs
 Texture[]      ball_textures;
 GameObject[]   ball_renderers;
-Material         ball_material;
-Material         table_material;
-GameObject      scorecard;
+Material       ball_material;
+Material       table_material;
+GameObject     scorecard;
 
 // Networked
 [HideInInspector] public uint gamemode_id;
@@ -61,14 +61,14 @@ GameObject      scorecard;
 [HideInInspector] public uint teams_allowed;
 
 // Non-critical
-uint menu_loc;      // 0: NewGame button, 1: Main menu
+uint menu_loc;    // 0: NewGame button, 1: Main menu
 
 [HideInInspector] public bool game_is_running = false;
 
 #if USE_AUTH_LOBBY
 
 VRCPlayerApi[] player_apis = new VRCPlayerApi[4];
-bool[] player_ready         = new bool[4];
+bool[] player_ready        = new bool[4];
 
 // 
 int local_playerid = -1;      // -1: not joined, 0-3: joined as ID
@@ -84,7 +84,7 @@ public void _internal_state_reset()
    colour_id = 0;
    timer_id = 0;
    teams_allowed = 0;
-   menu_loc = 0;               // TODO: This should be 0
+   menu_loc = 0;              // TODO: This should be 0
    game_is_running = false;
    
    #if USE_AUTH_LOBBY
@@ -111,7 +111,7 @@ Color k_lightColour_black = new Color( 0.01f, 0.01f, 0.01f, 1.0f );
 
 [HideInInspector] public Color table_src_colour;   // Cloth color
 Color table_current_colour;
-[HideInInspector] public Color table_src_light;      // Light color
+[HideInInspector] public Color table_src_light;    // Light color
 Color table_light_colour;
 
 // VFX stuff
@@ -131,7 +131,7 @@ public bool is_lobby_leader = false;
 // Networking msg id shite
 const byte k_7b_join = 0x00;
 const byte k_7b_leave = 0x10;
-const byte k_7b_nj_players = 0x20;   // Special new-joiner event to catch up quicker
+const byte k_7b_nj_players = 0x20;  // Special new-joiner event to catch up quicker
 
 const byte k_7b_menu_loc = 0x30;
 const byte k_7b_ball_col = 0x40;
@@ -253,7 +253,7 @@ void _gamemode_view()
 
    bool view_colour_selecters = true;
 
-   if( gamemode_id == 1u )   // 9 ball
+   if( gamemode_id == 1u ) // 9 ball
    {
       table_src_colour = k_fabricColour_blue;
 
@@ -944,7 +944,7 @@ private void _b7_proc( byte data )
       _players_view();
       #endif
    }
-   else if( msgid == k_7b_timelimit )                                          // EV 0x06: Timelimit
+   else if( msgid == k_7b_timelimit )                                         // EV 0x06: Timelimit
    {
       _frp( FRP_LOW + ".recv: Timelimit change" + FRP_END );
 

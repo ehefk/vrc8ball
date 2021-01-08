@@ -33,7 +33,7 @@ public class ht8b_cue : UdonSharpBehaviour
 
    // Make desktop mode a bit easier
    public bool useDesktop = false;
-   float dkRotation = -1.5708f;      // start at 90 degrees
+   float dkRotation = -1.5708f;     // start at 90 degrees
    float dkRotSpeed = 0.0f;
    public Vector3 dkTarget = Vector3.zero;
    bool dkSnapAim = false;
@@ -41,10 +41,10 @@ public class ht8b_cue : UdonSharpBehaviour
    float dkShotDist;
    float dkShotSpeed = 0.0f;
    public bool dkSimLock = true;
-   bool dkPickupLock = false;            // Waiting for user to stop clicking
+   bool dkPickupLock = false;          // Waiting for user to stop clicking
 
-   const float k_dkShotMax = 1.5f;         // Maximum power
-   const float k_dkShotReset = 0.91f;      // Normal pos
+   const float k_dkShotMax = 1.5f;        // Maximum power
+   const float k_dkShotReset = 0.91f;     // Normal pos
    const float k_dkShotTrigger = 0.85f;   // Reset point
 
 #endif
@@ -72,7 +72,7 @@ public class ht8b_cue : UdonSharpBehaviour
    private void OnPickupUseDown()
    {
 #if !HT_QUEST
-      if( !useDesktop )   // VR only controls
+      if( !useDesktop ) // VR only controls
       {
 #endif
          bArmed = true;
@@ -90,7 +90,7 @@ public class ht8b_cue : UdonSharpBehaviour
       }
 #endif
    }
-   private void OnPickupUseUp()   // VR
+   private void OnPickupUseUp()  // VR
    {
 
 #if !HT_QUEST
@@ -111,7 +111,7 @@ public class ht8b_cue : UdonSharpBehaviour
    private void OnPickup()
    {
 #if !HT_QUEST
-      if( !useDesktop )   // We dont need other hand to be availible for desktop player
+      if( !useDesktop ) // We dont need other hand to be availible for desktop player
       {
          objTarget.transform.localScale = Vector3.one;
       }
@@ -311,7 +311,7 @@ public class ht8b_cue : UdonSharpBehaviour
                   }
                   else
                   {
-                     if( dkShoot )   // Shooting sequence ( accelerate towords reset point )
+                     if( dkShoot )  // Shooting sequence ( accelerate towords reset point )
                      {
                         dkShotSpeed += Time.deltaTime * 0.12f;
                         dkShotDist -= dkShotSpeed;
