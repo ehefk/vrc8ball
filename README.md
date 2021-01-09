@@ -16,6 +16,8 @@ This project can be downloaded from [The releases page](https://github.com/Terri
 #### Collision layers
 There are some objects that need to be set to only collide on a seperate layer.
 
+Check the scene `ht8b` for a full setup example
+
 Recommended steps:
 - Edit > Project Settings > Tags and Layers
 - Add a new layer to the list
