@@ -13,6 +13,19 @@ This project can be downloaded from [The releases page](https://github.com/Terri
 - Install [Udon Sharp](https://github.com/MerlinVR/UdonSharp)
 - Import the package
 
+#### Collision layers
+There are some objects that need to be set to only collide on a seperate layer.
+
+Recommended steps:
+- Edit > Project Settings > Tags and Layers
+- Add a new layer to the list
+- Edit > Project Settings > Physics
+- In the collision matrix deselect all apart from itself for the new layer as so:
+
+![](https://i.imgur.com/eZpXQ65.png)
+
+- Finally, in the prefab, you should set all `ball00-ball15` to this layer, as well as `table_col` object
+
 ### Quest / PC Toggles
 The project includes some small scripts to change / toggle stuff between quest/pc versions
 
