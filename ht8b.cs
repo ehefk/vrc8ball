@@ -143,7 +143,7 @@
 #define HT_QUEST
 #endif
 
-//#define COMPILE_FUNC_TESTS
+#define COMPILE_FUNC_TESTS
 
 //#define MULTIGAMES_PORTAL
 //#define COMPILE_FUNC_TESTS
@@ -169,7 +169,7 @@ const float k_MAX_DELTA = 0.1f;                 // Maximum steps/frame ( 8 )
 
 const float k_FIXED_TIME_STEP = 0.0125f;              // time step in seconds per iteration
 const float k_FIXED_SUBSTEP   = 0.00125f;
-const float k_TIME_ALPHA      = 50.0f;                   // (unused) physics interpolation
+const float k_TIME_ALPHA      = 50.0f;                // (unused) physics interpolation
 const float k_TABLE_WIDTH     = 1.0668f;              // horizontal span of table
 const float k_TABLE_HEIGHT    = 0.6096f;              // vertical span of table
 const float k_BALL_DIAMETRE   = 0.06f;                // width of ball
@@ -180,7 +180,7 @@ const float k_BALL_RSQR       = 0.0009f;              // ball radius squared
 const float k_BALL_DSQR       = 0.0036f;              // ball diameter squared
 const float k_BALL_DSQRPE     = 0.003598f;            // ball diameter squared plus epsilon
 const float k_POCKET_RADIUS   = 0.09f;                // Full diameter of pockets (exc ball radi)
-const float k_CUSHION_RSTT    = 0.75f;                // Coefficient of restituion against cushion
+const float k_CUSHION_RSTT    = 0.79f;                // Coefficient of restituion against cushion
 
 const float k_1OR2            = 0.70710678118f;       // 1 over root 2 (normalize +-1,+-1 vector)
 const float k_1OR5            = 0.4472135955f;        // 1 over root 5 (normalize +-1,+-2 vector)
@@ -197,8 +197,8 @@ const float k_SPOT_POSITION_X = 0.5334f;              // First X position of the
 const float k_SPOT_CAROM_X    = 0.8001f;              // Spot position for carom mode
 
 const float k_RACK_HEIGHT     = -0.0702f;             // Rack position on Y axis
-const float k_GRAVITY         = 9.80665f;
-const float k_BALL_MASS       = 0.16f;
+const float k_GRAVITY         = 9.80665f;             // Earths gravitational acceleration
+const float k_BALL_MASS       = 0.16f;                // Weight of ball in kg
 
 public bool IS_ROLLING = false;
 
@@ -1301,6 +1301,87 @@ void _phy_ball_pockets( int id )
    }
 }
 
+const float k_SINA = 0.28078832987f;
+const float k_SINA2 = 0.07884208619f;
+const float k_COSA = 0.95976971915f;
+const float k_COSA2 = 0.92115791379f;
+const float k_EP1 = 1.79f;
+const float k_A = 21.875f;
+const float k_B = 6.25f;
+const float k_F = 1.72909790282f;
+
+// Apply cushion bounce
+void _phy_bounce_cushion( int id, Vector3 N )
+{
+   // Mathematical expressions derived from: https://billiards.colostate.edu/physics_articles/Mathavan_IMechE_2010.pdf
+   //
+   // (Note): subscript gamma, u, are used in replacement of Y and Z in these expressions because
+   // unicode does not have them.
+   //
+   // f = 2/7
+   // f₁ = 5/7
+   // 
+   // Velocity delta:
+   //   Δvₓ = −vₓ∙( f∙sin²θ + (1+e)∙cos²θ ) − Rωᵤ∙sinθ
+   //   Δvᵧ = 0
+   //   Δvᵤ = f₁∙vᵤ + fR( ωₓ∙sinθ - ωᵧ∙cosθ ) - vᵤ
+   //
+   // Aux:
+   //   Sₓ = vₓ∙sinθ - vᵧ∙cosθ+ωᵤ
+   //   Sᵧ = 0
+   //   Sᵤ = -vᵤ - ωᵧ∙cosθ + ωₓ∙cosθ
+   //   
+   //   k = (5∙Sᵤ) / ( 2∙mRA ); 
+   //   c = vₓ∙cosθ - vᵧ∙cosθ
+   //
+   // Angular delta:
+   //   ωₓ = k∙sinθ
+   //   ωᵧ = k∙cosθ
+   //   ωᵤ = (5/(2m))∙(-Sₓ / A + ((sinθ∙c∙(e+1)) / B)∙(cosθ - sinθ));
+   //
+   // These expressions are in the reference frame of the cushion, so V and ω inputs need to be rotated
+
+   // Rotate V, W to be in the reference frame of cushion
+   Quaternion rq = Quaternion.AngleAxis( Mathf.Atan2( -N.z, -N.x ) * Mathf.Rad2Deg, Vector3.up );
+   Vector3 V = rq * ball_V[ id ];
+   Vector3 W = rq * ball_W[ id ];
+    
+   Vector3 V1; 
+   Vector3 W1;
+   float k, c;
+
+   //V1.x = -V.x * ((2.0f/7.0f) * k_SINA2 + k_EP1 * k_COSA2) - (2.0f/7.0f) * k_BALL_PL_X * W.z * k_SINA;
+   //V1.z = (5.0f/7.0f)*V.z + (2.0f/7.0f) * k_BALL_PL_X * (W.x * k_SINA - W.y * k_COSA) - V.z;
+   //V1.y = 0.0f; 
+   // (baked):
+   V1.x = -V.x*k_F - 0.00240675711f*W.z;
+   V1.z = 0.71428571428f*V.z + 0.00857142857f*(W.x*k_SINA-W.y*k_COSA) - V.z;
+   V1.y = 0.0f;
+   
+   Vector3 s;
+   s.x = V.x * k_SINA - V.y * k_COSA + W.z;
+   s.z = -V.z - W.y * k_COSA + W.x * k_SINA; 
+   s.y = 0.0f;
+
+   // k = (5.0f * s.z) / ( 2 * k_BALL_MASS * k_A ); 
+   // (baked):
+   k = (5.0f * s.z) * 0.14285714285f;
+   c = V.x * k_COSA - V.y * k_COSA;
+
+   W1.x = k * k_SINA;
+
+   //W1.z = (5.0f / (2.0f * k_BALL_MASS)) * (-s.x / k_A + ((k_SINA * c * k_EP1) / k_B) * (k_COSA - k_SINA));
+   // (baked):
+   W1.z = 15.625f * (-s.x * 0.04571428571f + ((0.50261111047f * c) * 0.16f) * 0.67898138928f);
+
+   W1.y = k * k_COSA;
+
+   // Unrotate result
+   Quaternion rb = Quaternion.Inverse( rq );
+   ball_V[ id ] += rb * V1;
+   ball_W[ id ] += rq * W1;
+}
+
 // Pocketless table
 void _phy_ball_table_carom( int id )
 {
@@ -1316,19 +1397,13 @@ void _phy_ball_table_carom( int id )
    if( A.x * zx > k_TABLE_WIDTH )
    {
       ball_CO[ id ].x = k_TABLE_WIDTH * zx;
-      ball_V[ id ] = Vector3.Reflect( ball_V[ id ], Vector3.left * zx ) * k_CUSHION_RSTT;
-      //ball_W[ id ] = Vector3.Reflect( ball_W[ id ], Vector3.left * zx ) * k_CUSHION_RSTT;
-
-      //_clamp_ball_vel_semi( id, Vector2.left * zx );
+      _phy_bounce_cushion( id, Vector3.left * zx );
    }
 
    if( A.z * zz > k_TABLE_HEIGHT )
    {
       ball_CO[ id ].z = k_TABLE_HEIGHT * zz;
-      ball_V[ id ] = Vector2.Reflect( ball_V[ id ], Vector3.back * zz ) * k_CUSHION_RSTT;
-      //ball_W[ id ] = Vector3.Reflect( ball_W[ id ], Vector3.back * zx ) * k_CUSHION_RSTT;
-
-      //_clamp_ball_vel_semi( id, Vector2.down * zy );
+      _phy_bounce_cushion( id, Vector3.back * zz );
    }
 }
 
@@ -1397,10 +1472,7 @@ void _phy_ball_table_std( int id )
          ball_CO[ id ].z = j;
 
          // Reflect velocity
-         ball_V[ id ] = Vector3.Reflect( ball_V[ id ], N ) * k_CUSHION_RSTT;
-         //ball_W[ id ] = Vector3.Reflect( ball_W[ id ], N ) * k_CUSHION_RSTT;
-
-         //_clamp_ball_vel_semi( id, N );
+         _phy_bounce_cushion( id, N );
       }
    }
    else // edges
@@ -1408,19 +1480,13 @@ void _phy_ball_table_std( int id )
       if( A.x * zx > k_TABLE_WIDTH )
       {
          ball_CO[ id ].x = k_TABLE_WIDTH * zx;
-         ball_V[ id ] = Vector3.Reflect( ball_V[ id ], Vector3.left * zx ) * k_CUSHION_RSTT;
-         //ball_W[ id ] = Vector3.Reflect( ball_W[ id ], Vector3.left * zx ) * k_CUSHION_RSTT;
-
-         //_clamp_ball_vel_semi( id, Vector2.left * zx );
+         _phy_bounce_cushion( id, Vector3.left * zx );
       }
 
       if( A.z * zy > k_TABLE_HEIGHT )
       {
          ball_CO[ id ].z = k_TABLE_HEIGHT * zy;
-         ball_V[ id ] = Vector3.Reflect( ball_V[ id ], Vector3.back * zy ) * k_CUSHION_RSTT;
-         //ball_W[ id ] = Vector3.Reflect( ball_W[ id ], Vector3.back * zy ) * k_CUSHION_RSTT;
-
-         //_clamp_ball_vel_semi( id, Vector2.down * zy );
+         _phy_bounce_cushion( id, Vector3.back * zy );
       }
    }
 }
@@ -1433,6 +1499,32 @@ void _phy_ball_step( int id )
    Vector3 W = ball_W[ id ];
    Vector3 cv;
 
+   // Equations derived from: http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.89.4627&rep=rep1&type=pdf
+   // 
+   // R: Contact location with ball and floor aka: (0,-r,0)
+   // µₛ: Slipping friction coefficient
+   // µᵣ: Rolling friction coefficient
+   // i: Up vector aka: (0,1,0)
+   // g: Planet Earth's gravitation acceleration ( 9.80665 )
+   // 
+   // Relative contact velocity (marlow):
+   //   c = v + R✕ω
+   //
+   // Ball is classified as 'rolling' or 'slipping'. Rolling is when the relative velocity is none and the ball is
+   // said to be in pure rolling motion
+   //
+   // When ball is classified as rolling:
+   //   Δv = -µᵣ∙g∙Δt∙(v/|v|)
+   //
+   // Angular momentum can therefore be derived as:
+   //   ωₓ = -vᵤ/R
+   //   ωᵧ =  0
+   //   ωᵤ =  vₓ/R
+   //
+   // In the slipping state:
+   //   Δω = ((-5∙µₛ∙g)/(2/R))∙Δt∙i✕(c/|c|)
+   //   Δv = -µₛ∙g∙Δt(c/|c|)
+
    // Relative contact velocity of ball and table
    cv = V + Vector3.Cross( k_CONTACT_POINT, W );
    
@@ -1440,7 +1532,9 @@ void _phy_ball_step( int id )
    // The epsilon is quite high here because of the fairly large timestep we are working with
    if( cv.magnitude <= 0.1f )
    {
-      V += -k_F_ROLL * k_GRAVITY * k_FIXED_TIME_STEP * V.normalized;
+      //V += -k_F_ROLL * k_GRAVITY * k_FIXED_TIME_STEP * V.normalized;
+      // (baked):
+      V += -0.00122583125f * V.normalized;
 
       // Calculate rolling angular velocity
       W.x = -V.z * k_BALL_1OR;
@@ -1463,7 +1557,9 @@ void _phy_ball_step( int id )
       Vector3 nv = cv.normalized;
 
       // Angular slipping friction
-      W += ((-5.0f * k_F_SLIDE * 9.8f)/(2.0f * 0.03f)) * k_FIXED_TIME_STEP * Vector3.Cross( Vector3.up, nv );
+      //W += ((-5.0f * k_F_SLIDE * 9.8f)/(2.0f * 0.03f)) * k_FIXED_TIME_STEP * Vector3.Cross( Vector3.up, nv );
+      // (baked):
+      W += -2.04305208f * Vector3.Cross( Vector3.up, nv );
       V += -k_F_SLIDE * 9.8f * k_FIXED_TIME_STEP * nv;
 
       ballsMoving = true;
@@ -2534,14 +2630,22 @@ ushort _decode_u16( int pos )
 }
 
 // 4 char string from Vector2. Encodes floats in: [ -range, range ] to 0-65535
-void _encode_vec2( int pos, Vector2 vec, float range )
+void _encode_vec3( int pos, Vector3 vec, float range )
+{
+   _encode_u16( pos, (ushort)((vec.x / range) * I16_MAXf + I16_MAXf ) );
+   _encode_u16( pos + 2, (ushort)((vec.z / range) * I16_MAXf + I16_MAXf ) );
+}
+
+// 6 char string from Vector3. Encodes floats in: [ -range, range ] to 0-65535
+void _encode_vec3_full( int pos, Vector3 vec, float range )
 {
    _encode_u16( pos, (ushort)((vec.x / range) * I16_MAXf + I16_MAXf ) );
    _encode_u16( pos + 2, (ushort)((vec.y / range) * I16_MAXf + I16_MAXf ) );
+   _encode_u16( pos + 4, (ushort)((vec.z / range) * I16_MAXf + I16_MAXf ) );
 }
 
-// Decode 4 chars at index to Vector2. Decodes from 0-65535 to [ -range, range ]
-Vector2 _decode_vec2( int start, float range )
+// Decode 4 chars at index to Vector3 (x,z). Decodes from 0-65535 to [ -range, range ]
+Vector3 _decode_vec3( int start, float range )
 {
    ushort _x = _decode_u16( start );
    ushort _y = _decode_u16( start + 2 );
@@ -2549,7 +2653,21 @@ Vector2 _decode_vec2( int start, float range )
    float x = ((_x - I16_MAXf) / I16_MAXf) * range;
    float y = ((_y - I16_MAXf) / I16_MAXf) * range;
       
-   return new Vector2( x, y );
+   return new Vector3( x, 0.0f, y );
+} 
+
+// Decode 6 chars at index to Vector3. Decodes from 0-65535 to [ -range, range ]
+Vector3 _decode_vec3_full( int start, float range )
+{
+   ushort _x = _decode_u16( start );
+   ushort _y = _decode_u16( start + 2 );
+   ushort _z = _decode_u16( start + 4 );
+
+   float x = ((_x - I16_MAXf) / I16_MAXf) * range;
+   float y = ((_y - I16_MAXf) / I16_MAXf) * range;
+   float z = ((_z - I16_MAXf) / I16_MAXf) * range;
+      
+   return new Vector3( x, y, z );
 } 
 
 // Encode all data of game state into netstr
@@ -2567,16 +2685,15 @@ public void _netpack( uint _turnid )
    net_data = new byte[0x52];
 
    // positions
-   /*
+   
    for ( int i = 0; i < 16; i ++ )
    {
-      _encode_vec2( i * 4, ball_co[ i ], 2.5f );
+      _encode_vec3( i * 4, ball_CO[ i ], 2.5f );
    }
 
-   // Cue ball velocity last
-   _encode_vec2( 0x40, ball_vl[0], 50.0f );
-   _encode_vec2( 0x44, cue_avl, 50.0f );
-   */
+   // Cue ball velocity & angular velocity last
+   _encode_vec3( 0x40, ball_V[ 0 ], 50.0f );
+   _encode_vec3_full( 0x44, ball_W[ 0 ], 50.0f );
 
    // Encode pocketed imformation
    _encode_u16( 0x48, (ushort)(sn_pocketed & 0x0000FFFFU) );
