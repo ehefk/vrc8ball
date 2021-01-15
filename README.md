@@ -41,6 +41,5 @@ On the top of the prefab there is one:
 And in the scene `__MAIN__` also has one of these scripts
 
 ### Caveats
-HT8B once again has a position requirement, this time its that the Y position in the scene of this prefab should equal 0.0 
-
-This is due to one of the shaders (the contact shadow)
+- HT8B once again has a position requirement, this time its that the Y position in the scene of this prefab should equal 0.0 
+- This project is currently not designed / tested with more than one instance of a table in a world and is currently unsupported
