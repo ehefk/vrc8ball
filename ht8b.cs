@@ -143,7 +143,7 @@
 #define HT_QUEST
 #endif
 
-#define COMPILE_FUNC_TESTS
+//#define COMPILE_FUNC_TESTS
 
 //#define MULTIGAMES_PORTAL
 //#define COMPILE_FUNC_TESTS
@@ -1343,12 +1343,13 @@ void _phy_bounce_cushion( int id, Vector3 N )
 
    // Rotate V, W to be in the reference frame of cushion
    Quaternion rq = Quaternion.AngleAxis( Mathf.Atan2( -N.z, -N.x ) * Mathf.Rad2Deg, Vector3.up );
+   Quaternion rb = Quaternion.Inverse( rq );
    Vector3 V = rq * ball_V[ id ];
    Vector3 W = rq * ball_W[ id ];
     
    Vector3 V1; 
    Vector3 W1;
-   float k, c;
+   float k, c, s_x, s_z;
 
    //V1.x = -V.x * ((2.0f/7.0f) * k_SINA2 + k_EP1 * k_COSA2) - (2.0f/7.0f) * k_BALL_PL_X * W.z * k_SINA;
    //V1.z = (5.0f/7.0f)*V.z + (2.0f/7.0f) * k_BALL_PL_X * (W.x * k_SINA - W.y * k_COSA) - V.z;
@@ -1357,29 +1358,31 @@ void _phy_bounce_cushion( int id, Vector3 N )
    V1.x = -V.x*k_F - 0.00240675711f*W.z;
    V1.z = 0.71428571428f*V.z + 0.00857142857f*(W.x*k_SINA-W.y*k_COSA) - V.z;
    V1.y = 0.0f;
-   
-   Vector3 s;
-   s.x = V.x * k_SINA - V.y * k_COSA + W.z;
-   s.z = -V.z - W.y * k_COSA + W.x * k_SINA; 
-   s.y = 0.0f;
 
-   // k = (5.0f * s.z) / ( 2 * k_BALL_MASS * k_A ); 
+   // s_x = V.x * k_SINA - V.y * k_COSA + W.z;
+   // (baked): y component not used:
+   s_x = V.x * k_SINA + W.z;
+   s_z = -V.z - W.y * k_COSA + W.x * k_SINA; 
+
+   // k = (5.0f * s_z) / ( 2 * k_BALL_MASS * k_A ); 
    // (baked):
-   k = (5.0f * s.z) * 0.14285714285f;
-   c = V.x * k_COSA - V.y * k_COSA;
+   k = 5.0f * s_z * 0.14285714285f; 
+
+   // c = V.x * k_COSA - V.y * k_COSA;
+   // (baked): y component not used
+   c = V.x * k_COSA;
 
    W1.x = k * k_SINA;
 
-   //W1.z = (5.0f / (2.0f * k_BALL_MASS)) * (-s.x / k_A + ((k_SINA * c * k_EP1) / k_B) * (k_COSA - k_SINA));
+   //W1.z = (5.0f / (2.0f * k_BALL_MASS)) * (-s_x / k_A + ((k_SINA * c * k_EP1) / k_B) * (k_COSA - k_SINA));
    // (baked):
-   W1.z = 15.625f * (-s.x * 0.04571428571f + ((0.50261111047f * c) * 0.16f) * 0.67898138928f);
+   W1.z = 15.625f * (-s_x * 0.04571428571f + ((0.50261111047f * c) * 0.16f) * 0.67898138928f);
 
    W1.y = k * k_COSA;
 
    // Unrotate result
-   Quaternion rb = Quaternion.Inverse( rq );
    ball_V[ id ] += rb * V1;
-   ball_W[ id ] += rq * W1;
+   ball_W[ id ] += rb * W1;
 }
 
 // Pocketless table
@@ -1567,6 +1570,7 @@ void _phy_ball_step( int id )
 
    ball_W[ id ] = W;
    ball_V[ id ] = V;
+   balls_render[ id ].transform.Rotate( W.normalized, W.magnitude * k_FIXED_TIME_STEP * -Mathf.Rad2Deg, Space.World );
 
    uint ball_bit = 0x1U << id;
 
@@ -2693,7 +2697,7 @@ public void _netpack( uint _turnid )
 
    // Cue ball velocity & angular velocity last
    _encode_vec3( 0x40, ball_V[ 0 ], 50.0f );
-   _encode_vec3_full( 0x44, ball_W[ 0 ], 50.0f );
+   //_encode_vec3_full( 0x44, ball_W[ 0 ], 500.0f );
 
    // Encode pocketed imformation
    _encode_u16( 0x48, (ushort)(sn_pocketed & 0x0000FFFFU) );
@@ -2911,7 +2915,7 @@ public void _netread()
 
       // Reset rotation since guideline is parented.
       // TODO: maybe just translate guide manually??
-      balls_render[0].transform.rotation = Quaternion.identity;
+      balls_render[0].transform.localRotation = Quaternion.identity;
 
       if( sn_timer > 0 && !timer_running )
       {
