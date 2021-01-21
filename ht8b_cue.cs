@@ -1,4 +1,4 @@
-﻿#if !UNITY_ANDROID
+#if !UNITY_ANDROID
 #define HT8B_DEBUGGER
 #else
 #define HT_QUEST
@@ -28,12 +28,13 @@ public class ht8b_cue : UdonSharpBehaviour
    private VRC_Pickup pickup_this;
    private VRC_Pickup pickup_target;
 
+   VRCPlayerApi localplayer;
 
 #if !HT_QUEST
 
    // Make desktop mode a bit easier
    public bool useDesktop = false;
-   float dkRotation = -1.5708f;     // start at 90 degrees
+   float dkRotation = -1.5408f;     // start at 90 degrees
    float dkRotSpeed = 0.0f;
    public Vector3 dkTarget = Vector3.zero;
    bool dkSnapAim = false;
@@ -42,10 +43,17 @@ public class ht8b_cue : UdonSharpBehaviour
    float dkShotSpeed = 0.0f;
    public bool dkSimLock = true;
    bool dkPickupLock = false;          // Waiting for user to stop clicking
+   public bool dkPrimaryControl = true;
 
    const float k_dkShotMax = 1.5f;        // Maximum power
-   const float k_dkShotReset = 0.91f;     // Normal pos
+   const float k_dkShotReset = 0.885f;    // Normal pos
    const float k_dkShotTrigger = 0.85f;   // Reset point
+
+   const float k_dkAimSpeed = 0.0f;
+   const float k_dkNormalSpeed = 4.0f;
+   const float k_dkStrafeSpeed = 2.0f;
+   const float k_dkMaxRot = 10.0f;
+   const float k_dkFineAimSpeed = 10.0f;
 
 #endif
 
@@ -68,6 +76,8 @@ public class ht8b_cue : UdonSharpBehaviour
 
    Vector3 reset_pos_this;
    Vector3 reset_pos_target;
+
+   Vector3 dkCursorPos = Vector3.zero;
 
    private void OnPickupUseDown()
    {
@@ -135,44 +145,24 @@ public class ht8b_cue : UdonSharpBehaviour
       objTarget.GetComponent<SphereCollider>().enabled = true;
    }
 
-#if !HT_QUEST
-   // Shot registered
-   public void _dk_endhit()
-   {
-      if( useDesktop )
-      {
-         dkShoot = false;
-         dkShotDist = k_dkShotReset;
-         dkShotSpeed = 0.0f;
-         dkSimLock = true;
-      }
-   }
-
-   // Localize target coordinate memory
-   public void _dk_cpytarget()
-   {
-      if( useDesktop )
-      {
-         dkTarget = gameController.dkTargetPos;
-      }
-   }
-
-   public void _dk_unlock()
-   {
-      if( useDesktop )
-      {
-         dkSimLock = false;
-      }
-   }
-
-#endif
-
    private void OnDrop()
    {
       objTarget.transform.localScale = Vector3.zero;
       bHolding = false;
       objTargetController.bOtherHold = false;
       objTarget.GetComponent<SphereCollider>().enabled = false;
+
+      #if !HT_QUEST
+      if( useDesktop )
+      {
+         gameController._ht_desktop_cue_down();
+      }
+
+      #if !UNITY_EDITOR
+      Networking.LocalPlayer.SetRunSpeed( k_dkNormalSpeed );
+      Networking.LocalPlayer.SetStrafeSpeed( k_dkStrafeSpeed );
+      #endif
+      #endif
    }
 
    private void Start()
@@ -195,6 +185,8 @@ public class ht8b_cue : UdonSharpBehaviour
 
       reset_pos_target = objTarget.transform.position;
       reset_pos_this = this.transform.position;
+
+      localplayer = Networking.LocalPlayer;
    }
 
    // Set if local player can hold onto cue grips or not
@@ -220,21 +212,6 @@ public class ht8b_cue : UdonSharpBehaviour
 
    void Update()
    {
-      // Clamp controllers to play boundaries while we have hold of them
-      if( bHolding )
-      {
-         Vector3 temp = this.transform.localPosition;
-         temp.x = Mathf.Clamp( temp.x, -4.0f, 4.0f );
-         temp.y = Mathf.Clamp( temp.y, -0.8f, 1.5f );
-         temp.z = Mathf.Clamp( temp.z, -3.25f, 3.25f );
-         this.transform.localPosition = temp;
-         temp = objTarget.transform.localPosition;
-         temp.x = Mathf.Clamp( temp.x, -4.0f, 4.0f );
-         temp.y = Mathf.Clamp( temp.y, -0.8f, 1.5f );
-         temp.z = Mathf.Clamp( temp.z, -3.25f, 3.25f );
-         objTarget.transform.localPosition = temp;
-      }
-
       lag_objBase = Vector3.Lerp( lag_objBase, this.transform.position, Time.deltaTime * 16.0f );
       lag_objTarget = Vector3.Lerp( lag_objTarget, objTarget.transform.position, Time.deltaTime * 16.0f );
 
@@ -245,90 +222,55 @@ public class ht8b_cue : UdonSharpBehaviour
          objCue.transform.position = vBase + vLineNorm * vSnDet;
       }
       else
-      {
-         // put cue at base position
-         objCue.transform.position = lag_objBase;
-         objCue.transform.LookAt( lag_objTarget );
-
-         #if !HT_QUEST
-
-         // Special desktop alignment
-         if( bHolding && useDesktop )
+      {        
+         if( useDesktop && bHolding )
          {
-            // Stop input registering if we've just picked the thing up
-            if( dkPickupLock )
+            // Put cue in hand
+            if( dkPrimaryControl )
             {
-               if(!Input.GetButton("Fire1"))
-                  dkPickupLock = false;
-            }
-            else
-            {
-               // Place cue, (only within 1 meters)
-               if( (this.transform.position-dkTarget).sqrMagnitude < 1.0f && !dkSimLock )
+               objCue.transform.position = Networking.LocalPlayer.GetBonePosition( HumanBodyBones.RightHand );
+               this.transform.position = objCue.transform.position;
+
+               // Temporary target
+               objTarget.transform.position = objCue.transform.position + Vector3.up;
+
+               Quaternion fixrot = Quaternion.AngleAxis( 90.000f, Vector3.up );
+               objCue.transform.rotation = Networking.LocalPlayer.GetBoneRotation( HumanBodyBones.RightHand ) * fixrot;
+
+               Vector3 playerpos = gameController.gameObject.transform.InverseTransformPoint( Networking.LocalPlayer.GetPosition() );
+               
+               // Check turn entry
+               if( (Mathf.Abs( playerpos.x ) < 2.0f) && (Mathf.Abs( playerpos.z ) < 1.5f) )
                {
-                  bool in_left = Input.GetKey( KeyCode.Q );
-                  bool in_right = Input.GetKey( KeyCode.E );
-
-                  float accel = 0.8f * Time.deltaTime;
-
-                  // Use accelleration when rotating 
-                  if( !dkShoot )
+                  if( Input.GetKeyDown( KeyCode.E ) )
                   {
-                     if( in_left )
-                     {
-                        dkRotSpeed -= accel;
-                     }
-
-                     if( in_right )
-                     {
-                        dkRotSpeed += accel;
-                     }
-
-                     if( !( in_left || in_right ) )
-                     {
-                        dkRotSpeed = 0.0f;
-                     }
-
-                     // Position/rotation update pre-delayed by 1 frame to allow ht8b.cs to pick up the shot.
-                     dkRotation += dkRotSpeed * Time.deltaTime * 2.0f;
-                  }
-
-                  objCue.transform.position = new Vector3( dkTarget.x + Mathf.Sin( dkRotation ) * dkShotDist, 0.0f, dkTarget.z + Mathf.Cos( dkRotation ) * dkShotDist );
-                  objCue.transform.LookAt( dkTarget );
-
-                  if( Input.GetButton("Fire1") )
-                  {
-                     // Rising trigger start hitting
-                     if( !dkShoot )
-                     {
-                        gameController._tr_starthit();
-                     }
-
-                     dkShoot = true;
-                     dkShotDist += 0.2f * Time.deltaTime;
-
-                     dkShotDist = Mathf.Clamp( dkShotDist, 0, k_dkShotMax );
-                  }
-                  else
-                  {
-                     if( dkShoot )  // Shooting sequence ( accelerate towords reset point )
-                     {
-                        dkShotSpeed += Time.deltaTime * 0.12f;
-                        dkShotDist -= dkShotSpeed;
-
-                        // Should not be hit, but it might
-                        if( dkShotDist < 0.0f )
-                        {
-                           _dk_endhit();
-                           gameController._tr_endhit();
-                        }
-                     }
+                     dkPrimaryControl = false;
+                     gameController._ht_desktop_enter();
                   }
                }
             }
          }
+         else
+         {
+            // put cue at base position   
+            objCue.transform.position = lag_objBase;
+            objCue.transform.LookAt( lag_objTarget );
+         }
+      }
 
-         #endif
+      if( bHolding )
+      {
+         // Clamp controllers to play boundaries while we have hold of them
+         Vector3 temp = this.transform.localPosition;
+         temp.x = Mathf.Clamp( temp.x, -4.0f, 4.0f );
+         temp.y = Mathf.Clamp( temp.y, -0.8f, 1.5f );
+         temp.z = Mathf.Clamp( temp.z, -3.25f, 3.25f );
+         this.transform.localPosition = temp;
+         temp = objTarget.transform.localPosition;
+         temp.x = Mathf.Clamp( temp.x, -4.0f, 4.0f );
+         temp.y = Mathf.Clamp( temp.y, -0.8f, 1.5f );
+         temp.z = Mathf.Clamp( temp.z, -3.25f, 3.25f );
+         objTarget.transform.localPosition = temp;
       }
    }
 }
