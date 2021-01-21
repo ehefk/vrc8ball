@@ -76,9 +76,12 @@
    [ 0x40  ]   cue ball velocity    ^
    [ 0x44  ]   cue ball angular vel ^
 
-   [ 0x48  ]   sn_pocketed          uint16 bitmask ( above table )
+   [ 0x4A  ]   sn_pocketed          uint16 bitmask ( above table )
+            OR sn_gmspec            | bit #  | mask   | what            |
+                                    | 0-3    | 0x0f   | fb_scores[ 0 ]  |
+                                    | 4-7    | 0xf0   | fb_scores[ 1 ]  |
    
-   [ 0x4A  ]   game state flags     | bit #  | mask   | what            | 
+   [ 0x4C  ]   game state flags     | bit #  | mask   | what            | 
                                     | 0      | 0x1    | sn_simulating   |
                                     | 1      | 0x2    | sn_turnid       |
                                     | 2      | 0x4    | sn_foul         |
@@ -88,19 +91,13 @@
                                     | 6      | 0x40   | sn_winnerid     |
                                     | 7      | 0x80   | sn_permit       |
                                     | 8-10   | 0x700  | sn_gamemode     |
-                                    | 11-12  | 0x1800 | sn_colourset    |
+                                    | 11     | 0x800  | sn_lobbyopen    |
+                                    | 12     | 0x1000 | <reserved>      |
                                     | 13-14  | 0x6000 | sn_timer        |
                                     | 15     | 0x8000 | sn_allowteams   |
                                     
-   [ 0x4C  ]   packet #             uint16
-   [ 0x4E  ]   gameid               uint16
-
-   [ 0x50  ]   gamemode specific    uint16
-                  0:                   nothing
-                  1:                   nothing
-                  2:                   nothing
-                  3:                   0-7 player0 score
-                                       8-15 player1 score
+   [ 0x4E  ]   packet #             uint16
+   [ 0x50  ]   gameid               uint16
 
  Physics Implementation:
    
@@ -144,9 +141,9 @@
 #endif
 
 //#define COMPILE_FUNC_TESTS
-
 //#define MULTIGAMES_PORTAL
 //#define COMPILE_FUNC_TESTS
+#define MENU_DEV
 
 using UdonSharp;
 using UnityEngine;
@@ -184,6 +181,7 @@ const float k_CUSHION_RSTT    = 0.79f;                // Coefficient of restitui
 
 const float k_1OR2            = 0.70710678118f;       // 1 over root 2 (normalize +-1,+-1 vector)
 const float k_1OR5            = 0.4472135955f;        // 1 over root 5 (normalize +-1,+-2 vector)
+const float k_RANDOMIZE_F     = 0.0001f;
 
 const float k_POCKET_DEPTH    = 0.04f;                // How far back (roughly) do pockets absorb balls after this point
 const float k_MIN_VELOCITY    = 0.00005625f;          // SQUARED
@@ -246,7 +244,7 @@ const string FRP_END =  "</color>";
 #region R_INSPECTOR
 
 // Other behaviours
-[SerializeField]        ht8b_menu      menuController;
+//[SerializeField]         ht8b_menu      menuController;
 [SerializeField]        ht8b_cue[]     gripControllers;
 
 // GameObjects
@@ -265,10 +263,15 @@ const string FRP_END =  "</color>";
 [SerializeField]        GameObject     tableoverlayUI;
 [SerializeField]        GameObject     fxColliderBase;
 [SerializeField]        GameObject     pocketblockers;
+[SerializeField]        GameObject     m_base;
+[SerializeField]        GameObject     point4ball;
+[SerializeField]        GameObject[]   cueRenderObjs;
 
 // Meshes
-[SerializeField]        Mesh           carom_white;
-[SerializeField]        Mesh           carom_yellow;
+[SerializeField]        Mesh[]         cueball_meshes;
+[SerializeField]        Mesh           _9ball_mesh;
+[SerializeField]        Mesh           _4ball_mesh_add;
+[SerializeField]        Mesh           _4ball_mesh_minus;
 
 // Texts
 [SerializeField]        Text           ltext;
@@ -278,7 +281,6 @@ const string FRP_END =  "</color>";
 
 // Renderers
 [SerializeField] public Renderer       scoreCardRenderer;
-[SerializeField]        Renderer[]     cueRenderers;
 
 // Materials
 [SerializeField]        Material       guidelineMat;
@@ -297,7 +299,10 @@ const string FRP_END =  "</color>";
 [SerializeField]        AudioClip[]    snd_Hits;
 [SerializeField]        AudioClip      snd_NewTurn; 
 [SerializeField]        AudioClip      snd_PointMade;
-[SerializeField]        AudioClip      snd_bad;
+//[SerializeField]         AudioClip      snd_bad;
+[SerializeField]        AudioClip      snd_btn;
+[SerializeField]        AudioClip      snd_spin;
+[SerializeField]        AudioClip      snd_spinstop;
 
 #endregion
 
@@ -322,6 +327,8 @@ uint  sn_playerxor   = 0x00;     // 19:4 (0x10)    What colour the players have 
 bool  sn_gameover    = true;     // 19:5 (0x20)    Game is complete
 uint  sn_winnerid    = 0x00U;    // 19:6 (0x40)    Who won the game if sn_gameover is set
 
+bool  sn_lobbyclosed = true;
+
 [HideInInspector]
 public bool sn_permit= false;    // 19:7 (0x80)    Permission for player to play
 
@@ -334,7 +341,6 @@ public
 #endif
 
                            uint sn_gamemode  = 0;  // 19:8 (0x700)   Gamemode ID 3 bit { 0: 8 ball, 1: 9 ball, 2+: undefined }
-[HideInInspector] public   uint sn_colourset = 0;  // 19:11 (0x1800) Colourset 2 bit   { 0: blue/orange, 1: pink/green, 2: UK Solids, 3: USA Standard }
 [HideInInspector] public   uint sn_timer     = 0;  // 19:13 (0x6000) Timer ID 2 bit    { 0: inf, 1: 30s, 2: 60s, 3: undefined }
                            bool sn_teams = false;  // 19:15 (0x8000) Teams on/off (1 bit)
 
@@ -352,13 +358,16 @@ bool sn_open_prv;
 bool sn_gameover_prv;
 ushort sn_gameid_prv;
 
+uint sn_gamemode_prv;
+uint sn_timer_prv;
+bool sn_teams_prv;
+bool sn_lobbyclosed_prv;
+
 // unused
 //bool sn_simulating_prv;
 //bool sn_foul_prv;
 //uint sn_playerxor_prv;
-//uint sn_gamemode_prv;
 //uint sn_colourset_prv;
-//uint sn_timer_prv;
 //bool sn_inmenu_prv;
 //uint sn_winnerid_prv;
 //bool sn_permit_prv;
@@ -387,11 +396,12 @@ bool  ballsMoving    = false;    // Tracker variable to see if balls are still o
 bool  isReposition   = false;       // Repositioner is active
 float repoMaxX       = k_TABLE_WIDTH;  // For clamping to table or set lower for kitchen
 
-bool gameIdle        = true;     // Set by NewGameLocal / EndGameLocal
-
 float timer_end      = 0.0f;     // What should the timer run out at
 float timer_recip    = 0.0f;     // 1 over time limit
 bool  timer_running  = false;
+
+bool  particle_alive = false;
+float particle_time  = 0.0f;
 
 bool  fb_madepoint   = false;
 bool  fb_madefoul    = false;
@@ -404,11 +414,14 @@ int[] fb_scores = new int[2];
 bool  gm_is_0 = false;
 bool  gm_is_1 = false;
 bool  gm_is_2 = false;
-bool  gm_is_3 = false;
+//bool   gm_is_3 = false;
+bool  gm_practice = false;       // Game should run in practice mode
+
+bool  dk_shootui = false;
 
 // Values that will get sucked in from the menu
 [HideInInspector] public int local_playerid = -1;
-                        uint local_teamid = 0U;    // Interpreted value
+                        uint local_teamid = 0u;    // Interpreted value
 
 #endregion
 
@@ -464,17 +477,17 @@ Color pClothColour;
 // Updates table colour target to appropriate player colour
 void _vis_apply_tablecolour( uint idsrc )
 {
-   if( gm_is_3 )
+   if( gm_is_2 )
    {
       if( sn_turnid == 0 )
       {
-         cueRenderers[ 0 ].sharedMaterial.SetColor( uniform_cue_colour, pColour0 );
-         cueRenderers[ 1 ].sharedMaterial.SetColor( uniform_cue_colour, pColour1 * 0.5f );
+         cueRenderObjs[ 0 ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, pColour0 );
+         cueRenderObjs[ 1 ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, pColour1 * 0.5f );
       }
       else
       {
-         cueRenderers[ 0 ].sharedMaterial.SetColor( uniform_cue_colour, pColour0 * 0.5f );
-         cueRenderers[ 1 ].sharedMaterial.SetColor( uniform_cue_colour, pColour1 );
+         cueRenderObjs[ 0 ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, pColour0 * 0.5f );
+         cueRenderObjs[ 1 ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, pColour1 );
       }
 
       tableSrcColour = k_tableColourBlack;
@@ -482,8 +495,8 @@ void _vis_apply_tablecolour( uint idsrc )
    
    else if( gm_is_1 )
    {
-      cueRenderers[ sn_turnid ].sharedMaterial.SetColor( uniform_cue_colour, k_tableColorWhite );
-      cueRenderers[ sn_turnid ^ 0x1u ].sharedMaterial.SetColor( uniform_cue_colour, k_tableColourBlack );
+      cueRenderObjs[ sn_turnid ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, k_tableColorWhite );
+      cueRenderObjs[ sn_turnid ^ 0x1u ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, k_tableColourBlack );
 
       tableSrcColour = pColour2;
    }
@@ -503,15 +516,15 @@ void _vis_apply_tablecolour( uint idsrc )
             tableSrcColour = pColour1;
          }
 
-         cueRenderers[ sn_playerxor ].sharedMaterial.SetColor( uniform_cue_colour, pColour0 );
-         cueRenderers[ sn_playerxor ^ 0x1u ].sharedMaterial.SetColor( uniform_cue_colour, pColour1 );
+         cueRenderObjs[ sn_playerxor ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, pColour0 );
+         cueRenderObjs[ sn_playerxor ^ 0x1u ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, pColour1 );
       }
       else
       {
          tableSrcColour = pColour2;
 
-         cueRenderers[ sn_turnid ].sharedMaterial.SetColor( uniform_cue_colour, k_tableColorWhite );
-         cueRenderers[ sn_turnid ^ 0x1u ].sharedMaterial.SetColor( uniform_cue_colour, k_tableColourBlack );
+         cueRenderObjs[ sn_turnid ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, k_tableColorWhite );
+         cueRenderObjs[ sn_turnid ^ 0x1u ].GetComponent< MeshRenderer >().sharedMaterial.SetColor( uniform_cue_colour, k_tableColourBlack );
       }
 
    }
@@ -530,7 +543,7 @@ void _vis_showballs()
       for( int i = 10; i < 16; i ++ )
          balls_render[ i ].SetActive( false );
    }
-   else if( gm_is_3 )
+   else if( gm_is_2 )
    {
       for( int i = 1; i < 16; i ++ )
          balls_render[ i ].SetActive( false );
@@ -563,7 +576,7 @@ public void _vis_updatecoloursources()
       // 9 ball only uses one colourset / cloth colour
       ballMaterial.SetTexture( "_MainTex", textureSets[ 3 ] );
    }
-   else if( gm_is_3 )
+   else if( gm_is_2 )
    {
       pColour0 = k_tableColorWhite;
       pColour1 = k_tableColourYellow;
@@ -580,32 +593,78 @@ public void _vis_updatecoloursources()
       pColourErr = k_tableColourRed;
       pColour2 = k_tableColorWhite;
 
-      if( sn_colourset == 0 )       // Blue / Orange
-      {
-         pColour0 = k_tableColourBlue;
-         pColour1 = k_tableColourOrange;
-      }
-      else if( sn_colourset == 1 )  // pink / green
-      {
-         pColour0 = k_tableColourPink;
-         pColour1 = k_tableColourGreen;
-      }
-      else if( sn_colourset == 2 )  // UK Red / Yellow
-      {
-         pColour0 = k_tableColourRed;
-         pColour1 = k_tableColourYellow;
-      }
-      else                          // US doesnt have border colours
-      {
-         pColour0 = k_tableColourBlack;
-         pColour1 = k_tableColourBlack;
-      }
+      pColour0 = k_tableColourBlue;
+      pColour1 = k_tableColourOrange;
 
-      ballMaterial.SetTexture( "_MainTex", textureSets[ sn_colourset ] );
+      ballMaterial.SetTexture( "_MainTex", textureSets[ 0 ] );
       pClothColour = k_fabricColour_gray;
    }
 
    tableMaterial.SetColor( "_ClothColour", pClothColour );
+}
+
+void _vis_disableobjects()
+{
+   guideline.SetActive( false );
+   devhit.SetActive( false );
+   infBaseTransform.SetActive( false );
+   markerObj.SetActive( false );
+   tableoverlayUI.SetActive( false );
+   marker9ball.SetActive( false );
+   point4ball.SetActive( false );
+}
+
+void _vis_spawn_floaty( Vector3 pos, Mesh m )
+{
+   point4ball.SetActive( true );
+   particle_alive = true;
+   particle_time = 0.1f;
+
+   // orient to be looking at player
+   Vector3 lpos = Networking.LocalPlayer.GetPosition();
+   Vector3 delta = lpos - this.transform.TransformPoint( pos );
+   float r = Mathf.Atan2( delta.x, delta.z );
+   point4ball.transform.localRotation = Quaternion.AngleAxis( r*Mathf.Rad2Deg, Vector3.up );
+
+   // set position
+   point4ball.transform.localPosition = pos;
+
+   // Set scale
+   point4ball.transform.localScale = Vector3.zero;
+
+   point4ball.GetComponent< MeshFilter >().sharedMesh = m;
+}
+
+void _vis_floaty_eval()
+{
+   float scale,s,v,e;
+
+   // Evaluate time
+   particle_time += Time.deltaTime * 0.25f;
+
+   // Sustained step
+   s = Mathf.Max( particle_time-0.1f, 0.0f );
+   v = Mathf.Min( particle_time*particle_time*100.0f, 21.0f*s*Mathf.Exp(-15.0f*s) );
+
+   // Exponential step
+   e = Mathf.Exp( -17.0f * Mathf.Pow( Mathf.Max( particle_time - 1.2f, 0.0f ), 3.0f ) );
+
+   scale = e*v*2.0f;
+
+   // Set scale
+   point4ball.transform.localScale = new Vector3( scale, scale, scale );
+
+   // Set position
+   Vector3 temp = point4ball.transform.localPosition;
+   temp.y = particle_time * 0.5f;
+   point4ball.transform.localPosition = temp;
+
+   // Particle death
+   if( particle_time > 2.0f )
+   {
+      particle_alive = false;
+      point4ball.SetActive( false );
+   }
 }
 
 #endregion
@@ -628,23 +687,25 @@ void _timer_reset()
 
 #region R_LOCALEV
 
-void _onlocal_carompoint()
+void _onlocal_carompoint( Vector3 p )
 {
    fb_madepoint = true;
    aud_main.PlayOneShot( snd_PointMade, 1.0f );
 
    fb_scores[ sn_turnid ] ++;
 
-   if( fb_scores[ sn_turnid ] > 15 )
+   if( fb_scores[ sn_turnid ] > 10 )
    {
-      fb_scores[ sn_turnid ] = 15;
+      fb_scores[ sn_turnid ] = 10;
    }
+
+   _vis_spawn_floaty( p, _4ball_mesh_add );
 }
 
-void _onlocal_carompenalize()
+void _onlocal_carompenalize( Vector3 p )
 {
    fb_madefoul = true;
-   aud_main.PlayOneShot( snd_bad, 1.0f );
+   //aud_main.PlayOneShot( snd_bad, 1.0f );
 
    fb_scores[ sn_turnid ] --;
 
@@ -652,6 +713,8 @@ void _onlocal_carompenalize()
    {
       fb_scores[ sn_turnid ] = 0;
    }
+
+   _vis_spawn_floaty( p, _4ball_mesh_minus );
 }
 
 // Called when a player first sinks a ball whilst the table was previously open
@@ -678,9 +741,6 @@ void _onlocal_gameover()
    _frp( FRP_YES + "(local) Winner of match: " + Networking.GetOwner( playerTotems[ sn_winnerid ] ).displayName + FRP_END );
 #endif
 
-   // Return to menu
-   gameIdle = true;
-
    _vis_apply_tablecolour( sn_winnerid );
 
    infText.text = Networking.GetOwner( playerTotems[ sn_winnerid ] ).displayName + " wins!";
@@ -701,22 +761,7 @@ void _onlocal_gameover()
    local_playerid = -1;
    _apply_cue_access();
 
-   // Get rid of portal stuff
-   #if MULTIGAMES_PORTAL
-   target_surface = tableMaterial;
-   table_normal.SetActive( true );
-
-   for( int i = 0; i < table_portal.Length; i ++ )
-   {
-      table_portal[ i ].SetActive( false );
-   }
-   #endif
-
-   // Put menu back on
-   menuController.gameObject.SetActive( true );
-   menuController._internal_state_reset();
-   menuController.table_src_colour = pClothColour;
-   menuController.table_src_light = tableSrcColour;
+   _htmenu_enter();
 }
 
 void _onlocal_turnchange()
@@ -728,12 +773,10 @@ void _onlocal_turnchange()
    // Register correct cuetip
    cuetip = cueTips[ sn_turnid ];
 
-   bool isOurTurn = (local_playerid >= 0) && (local_teamid == sn_turnid);
+   bool isOurTurn = ((local_playerid >= 0) && (local_teamid == sn_turnid)) || gm_practice;
 
-   if( gm_is_3 )
+   if( gm_is_2 ) // 4 ball
    {
-      // TODO: CHANGE MESHES
-
       // Swap cue ball and opponent cue
       Vector3 temp = ball_CO[ 0 ];
       ball_CO[ 0 ] = ball_CO[ 9 ];
@@ -741,13 +784,13 @@ void _onlocal_turnchange()
 
       if( sn_turnid == 0 )
       {
-         balls_render[ 0 ].GetComponent<MeshFilter>().sharedMesh = carom_white;
-         balls_render[ 9 ].GetComponent<MeshFilter>().sharedMesh = carom_yellow;
+         balls_render[ 0 ].GetComponent<MeshFilter>().sharedMesh = cueball_meshes[ 0 ];
+         balls_render[ 9 ].GetComponent<MeshFilter>().sharedMesh = cueball_meshes[ 1 ];
       }
       else
       {
-         balls_render[ 9 ].GetComponent<MeshFilter>().sharedMesh = carom_white;
-         balls_render[ 0 ].GetComponent<MeshFilter>().sharedMesh = carom_yellow;
+         balls_render[ 9 ].GetComponent<MeshFilter>().sharedMesh = cueball_meshes[ 0 ];
+         balls_render[ 0 ].GetComponent<MeshFilter>().sharedMesh = cueball_meshes[ 1 ];
       }
    }
    else
@@ -771,7 +814,7 @@ void _onlocal_turnchange()
          repoMaxX = k_TABLE_WIDTH;
          markerObj.SetActive( true );
 
-         markerObj.transform.position = ball_CO[ 0 ];
+         markerObj.transform.localPosition = ball_CO[ 0 ];
       }
    }
 
@@ -784,7 +827,7 @@ void _onlocal_turnchange()
 
 void _onlocal_updatescorecard()
 {
-   if( gm_is_3 )
+   if( gm_is_2 )
    {
       scoreCardRenderer.sharedMaterial.SetVector( uniform_scorecard_info, new Vector4( fb_scores[ 0 ]*0.04681905f, fb_scores[ 1 ]*0.04681905f, 0.0f, 0.0f ) );
    }
@@ -923,7 +966,7 @@ void _onlocal_sim_end()
 
          // TODO: Implement rail contact requirement
       } 
-      else if( gm_is_3 ) // 4 ball
+      else if( gm_is_2 ) // 4 ball
       {
          isObjectiveSink = fb_madepoint;
          isOpponentSink = fb_madefoul;
@@ -932,7 +975,7 @@ void _onlocal_sim_end()
 
          winCondition = fb_scores[ sn_turnid ] >= 10;
       }
-      else
+      else // Unkown mode
       {
          isObjectiveSink = true;
          isOpponentSink = false;
@@ -1023,15 +1066,23 @@ void _apply_cue_access()
 {
    if( local_playerid >= 0 )
    {
-      if( (local_teamid & 0x1) > 0 )                  // Local player is 1, or 3
-      {
-         gripControllers[ 1 ]._access_allow();
-         gripControllers[ 0 ]._access_deny();
-      }
-      else                                            // Local player is 0, or 2
+      if( gm_practice )
       {
          gripControllers[ 0 ]._access_allow();
-         gripControllers[ 1 ]._access_deny();
+         gripControllers[ 1 ]._access_allow();
+      }
+      else
+      {
+         if( (local_teamid & 0x1) > 0 )                  // Local player is 1, or 3
+         {
+            gripControllers[ 1 ]._access_allow();
+            gripControllers[ 0 ]._access_deny();
+         }
+         else                                            // Local player is 0, or 2
+         {
+            gripControllers[ 0 ]._access_allow();
+            gripControllers[ 1 ]._access_deny();
+         }
       }
    }
    else
@@ -1047,11 +1098,10 @@ void _setup_gm_spec()
    gm_is_0 = false;
    gm_is_1 = false;
    gm_is_2 = false;
-   gm_is_3 = false;
+   // gm_is_3 = false;
    if( sn_gamemode == 0u ) gm_is_0 = true;
    if( sn_gamemode == 1u ) gm_is_1 = true;
    if( sn_gamemode == 2u ) gm_is_2 = true;
-   if( sn_gamemode == 3u ) gm_is_3 = true;
 }
 
 void _onlocal_newgame()
@@ -1062,15 +1112,12 @@ void _onlocal_newgame()
 
    _setup_gm_spec();
 
-   gameIdle = false;
-
    // Calculate interpreted values from menu states
    if( local_playerid >= 0 )
       local_teamid = (uint)local_playerid & 0x1u;
 
    // Disable menu
-   menuController.game_is_running = true;
-   menuController.gameObject.SetActive( false );
+   _htmenu_exit();
 
    // Reflect menu-state settings (for late joiners)
    _vis_updatecoloursources();
@@ -1081,13 +1128,15 @@ void _onlocal_newgame()
    if( gm_is_1 )  // 9 ball specific
    {
       scoreCardRenderer.gameObject.SetActive( false );
+      marker9ball.SetActive( true );
    }
    else
    {
       scoreCardRenderer.gameObject.SetActive( true );
+      marker9ball.SetActive( false );
    }
 
-   if( gm_is_3 ) // 4 ball specific
+   if( gm_is_2 ) // 4 ball specific
    {
       fb_kr = true;
       fb_jp = false;
@@ -1096,16 +1145,24 @@ void _onlocal_newgame()
 
       scoreCardRenderer.sharedMaterial.SetColor( uniform_scorecard_colour0, pColour0 );
       scoreCardRenderer.sharedMaterial.SetColor( uniform_scorecard_colour1, pColour1 );
+
+      fb_scores[ 0 ] = 0;
+      fb_scores[ 1 ] = 0;
+
+      // Reset mesh filters on balls that change them
+      balls_render[ 0 ].GetComponent<MeshFilter>().sharedMesh = cueball_meshes[ 0 ];
+      balls_render[ 9 ].GetComponent<MeshFilter>().sharedMesh = cueball_meshes[ 1 ];
    }
    else
    {
       pocketblockers.SetActive( false );
       scoreCardRenderer.sharedMaterial.SetTexture( "_MainTex", scorecard8ball );
+
+      // Reset mesh filters on balls that change them
+      balls_render[ 0 ].GetComponent<MeshFilter>().sharedMesh = cueball_meshes[ 0 ];
+      balls_render[ 9 ].GetComponent<MeshFilter>().sharedMesh = _9ball_mesh;
    }
 
-   // Reset mesh filters on balls that change them
-   balls_render[ 0 ].GetComponent<MeshFilter>().sharedMesh = carom_white;
-   balls_render[ 9 ].GetComponent<MeshFilter>().sharedMesh = carom_yellow;
 
    _vis_showballs();
 
@@ -1341,10 +1398,19 @@ void _phy_bounce_cushion( int id, Vector3 N )
    //
    // These expressions are in the reference frame of the cushion, so V and ω inputs need to be rotated
 
+   // Reject bounce if velocity is going the same way as normal
+   // this state means we tunneled, but it happens only on the corner
+   // vertexes
+   Vector3 source_v = ball_V[ id ];
+   if( Vector3.Dot( source_v, N ) > 0.0f )
+   {
+      return;
+   }
+
    // Rotate V, W to be in the reference frame of cushion
    Quaternion rq = Quaternion.AngleAxis( Mathf.Atan2( -N.z, -N.x ) * Mathf.Rad2Deg, Vector3.up );
    Quaternion rb = Quaternion.Inverse( rq );
-   Vector3 V = rq * ball_V[ id ];
+   Vector3 V = rq * source_v;
    Vector3 W = rq * ball_W[ id ];
     
    Vector3 V1; 
@@ -1366,7 +1432,7 @@ void _phy_bounce_cushion( int id, Vector3 N )
 
    // k = (5.0f * s_z) / ( 2 * k_BALL_MASS * k_A ); 
    // (baked):
-   k = 5.0f * s_z * 0.14285714285f; 
+   k = s_z * 0.71428571428f; 
 
    // c = V.x * k_COSA - V.y * k_COSA;
    // (baked): y component not used
@@ -1376,8 +1442,7 @@ void _phy_bounce_cushion( int id, Vector3 N )
 
    //W1.z = (5.0f / (2.0f * k_BALL_MASS)) * (-s_x / k_A + ((k_SINA * c * k_EP1) / k_B) * (k_COSA - k_SINA));
    // (baked):
-   W1.z = 15.625f * (-s_x * 0.04571428571f + ((0.50261111047f * c) * 0.16f) * 0.67898138928f);
-
+   W1.z = 15.625f * (-s_x * 0.04571428571f + c * 0.0546021744f);
    W1.y = k * k_COSA;
 
    // Unrotate result
@@ -1601,17 +1666,17 @@ void _phy_ball_step( int id )
             ball_V[id] -= reflection;
             ball_V[i] += reflection;
 
-            // TODO: make this more accurate. It is cheating currently
-
-
             // Prevent sound spam if it happens
-            if( ball_V[ id ].sqrMagnitude > 0 )
-               aud_main.PlayOneShot( snd_Hits[ 0 ], 1.0f );
+            if( ball_V[ id ].sqrMagnitude > 0 && ball_V[ i ].sqrMagnitude > 0 )
+            {
+               //aud_main.PlayOneShot( snd_Hits[ 0 ], 1.0f );
+               AudioSource.PlayClipAtPoint( snd_Hits[ 0 ], ball_CO[ id ], 1.0f );
+            }
 
             // First hit detected
             if( id == 0 )
             {
-               if( gm_is_3 )
+               if( gm_is_2 )
                {
                   if( fb_kr ) // KR 사구 ( Sagu )
                   {
@@ -1619,7 +1684,7 @@ void _phy_ball_step( int id )
                      {
                         if( !fb_madefoul )
                         {
-                           _onlocal_carompenalize();
+                           _onlocal_carompenalize( ball_CO[ i ] );
                         }
                      }
                      else
@@ -1635,7 +1700,7 @@ void _phy_ball_step( int id )
                               if( sn_secondhit == 0 )
                               {
                                  sn_secondhit = i;
-                                 _onlocal_carompoint();
+                                 _onlocal_carompoint( ball_CO[ i ] );
                               }
                            }
                         }
@@ -1654,7 +1719,7 @@ void _phy_ball_step( int id )
                            if( i != sn_firsthit )
                            {
                               sn_secondhit = i;
-                              _onlocal_carompoint();
+                              _onlocal_carompoint( ball_CO[ i ] );
                            }
                         }
                         else 
@@ -1664,7 +1729,7 @@ void _phy_ball_step( int id )
                               if( i != sn_firsthit && i != sn_secondhit )
                               {
                                  sn_thirdhit = i;
-                                 _onlocal_carompoint();
+                                 _onlocal_carompoint( ball_CO[ i ] );
                               }
                            }
                         }
@@ -1787,7 +1852,7 @@ void _phys_step()
       return;
    }
 
-   if( gm_is_3 )
+   if( gm_is_2 )
    {
       _phy_ball_table_carom( 0 );
       _phy_ball_table_carom( 2 );
@@ -1808,7 +1873,7 @@ void _phys_step()
       }
    }
 
-   if( gm_is_3 ) return;
+   if( gm_is_2 ) return;
 
    ball_bit = 0x1U;
 
@@ -1946,7 +2011,7 @@ void _turn_pass()
 
    sn_permit = true;
 
-   _netpack( sn_turnid ^ 0x1U );
+   _netpack( sn_turnid ^ 0x1u );
    _netread();
 }
 
@@ -2023,29 +2088,697 @@ void _turn_continue()
 
 #endregion
 
-#region R_DESKTOP
+#region R_MENU
 
-#if !HT_QUEST
-void _dk_AllowHit()
+                  Vector3     m_planenormal;
+                  float       m_planedist;
+
+                  Vector3     m_cursor;
+                  bool        m_desktop         = true;
+
+         const    float       k_mGmButtonW      = 0.09345f;
+         const    float       k_mGmButtonH      = 0.034f;
+         const    float       k_mSmolButtonR    = 0.034f;
+
+         const    float       k_mGmButtonA      = 0.01026977f;    // Reset height
+
+[SerializeField]  GameObject[]   m_gamemode_buttons;
+[SerializeField]  GameObject[]   m_join_buttons;
+                  
+//[SerializeField]   GameObject     m_startbutton;
+[SerializeField]  GameObject[]   m_teambuttons;
+[SerializeField]  GameObject[]   m_timebuttons;
+
+                  bool[]         m_gm_buttonstates = new bool[4];
+[SerializeField]  Mesh[]         m_buttonmeshes;
+
+            const int            k_EButtonMesh_8ball     = 0;
+            const int            k_EButtonMesh_9ball     = 1;
+            const int            k_EButtonMesh_4ball     = 2;
+            const int            k_EButtonMesh_reserved0 = 3;
+            const int            k_EButtonMesh_green     = 4;
+            const int            k_EButtonMesh_red       = 5;
+            const int            k_EButtonMesh_blue      = 6;
+            const int            k_EButtonMesh_triangle  = 7;
+            const int            k_EButtonMesh_join_0    = 8;
+            const int            k_EButtonMesh_join_1    = 9;
+            const int            k_EButtonMesh_play      = 10;
+
+            const uint           k_ButtonState_None         = 0x0u;
+            const uint           k_ButtonState_Pressing     = 0x1u;
+            const uint           k_ButtonState_Triggered    = 0x2u;
+            const uint           k_ButtonState_ShouldReset  = 0x2u;
+            const uint           k_ButtonState_FrameMask    = 0xFFFFFFFEu; // (~0x1u)
+
+            // Current check dimensions ( pulled from above )
+            float m_current_x = 0.0f;
+            float m_current_y = 0.0f;
+            Mesh  m_current_outline;
+            MeshFilter  m_outline_filter;
+
+            uint[]         m_auto_btnstate = new uint[20];
+            GameObject[]   m_auto_btnobjs = new GameObject[20];
+            int            m_auto_id      = -1;
+
+[SerializeField]  GameObject     m_gm_dkoutline;
+[SerializeField]  GameObject[]   m_playerslot_owners;
+
+            // VFX stuff
+[SerializeField]  GameObject     m_TeamCover;
+[SerializeField]  GameObject     m_TimeLimitDisp;
+
+            Vector3              m_TeamCover_target_s;
+            Vector3              m_TeamCover_current_s;
+
+            Vector3              m_TimeLimit_x_target;
+            Vector3              m_TimeLimit_x_current;
+
+[SerializeField]  GameObject     m_menuLoc_main;
+[SerializeField]  GameObject     m_menuLoc_start;
+[SerializeField]  GameObject     m_newGameBtn;
+[SerializeField]  Text[]         m_lobbyNames;
+
+            Vector3              m_menuLoc_sw;
+            Vector3              m_menuLoc_swt;
+
+VRCPlayerApi localplayer;
+
+#if MENU_DEV
+
+[SerializeField]  GameObject  m_devcursor;
+
+#endif
+
+Vector3 _plane_line_intersect( Vector3 n, float d, Vector3 a, Vector3 b )
 {
-   #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "(local) _AllowHit()" + FRP_END );
-   #endif
+    Vector3 ba = b-a;
+    float nDotA = Vector3.Dot(n, a);
+    float nDotBA = Vector3.Dot(n, ba);
 
-   _dk_updatetarget();
-   gripControllers[ sn_turnid ]._dk_unlock();
+    return a + (((d - nDotA)/nDotBA) * ba);
 }
 
-void _dk_updatetarget()
+// Setup meshes on gameobject
+void _htbtn_init( GameObject button, int variant, bool state )
 {
-   // Update desktop targets
-   dkTargetPos = this.transform.TransformPoint( ball_CO[ 0 ] );
+   button.GetComponent< MeshFilter >().sharedMesh = m_buttonmeshes[ variant*3 + (state? 1: 0) ];
+}
+
+void _htmenu_init()
+{
+   // Setup button meshes
+   _htbtn_init( m_gamemode_buttons[ 0 ], k_EButtonMesh_8ball, sn_gamemode == 0u );
+   _htbtn_init( m_gamemode_buttons[ 1 ], k_EButtonMesh_9ball, sn_gamemode == 1u );
+   _htbtn_init( m_gamemode_buttons[ 2 ], k_EButtonMesh_4ball, sn_gamemode == 2u );
+
+   _htbtn_init( m_join_buttons[ 0 ], k_EButtonMesh_join_0, false );
+   _htbtn_init( m_join_buttons[ 1 ], k_EButtonMesh_join_1, false );
+
+   //_htbtn_init( m_startbutton, k_EButtonMesh_play, false );
+
+   _htbtn_init( m_teambuttons[ 0 ], k_EButtonMesh_red,   !sn_teams );
+   _htbtn_init( m_teambuttons[ 1 ], k_EButtonMesh_green,  sn_teams );
+
+   _htbtn_init( m_timebuttons[ 0 ], k_EButtonMesh_triangle, true );
+   _htbtn_init( m_timebuttons[ 1 ], k_EButtonMesh_triangle, true );
+   _htbtn_init( m_newGameBtn, k_EButtonMesh_play, true );
+    
+   m_outline_filter = m_gm_dkoutline.GetComponent<MeshFilter>();
+
+   // Create surface plane
+   m_planenormal = m_base.transform.up;
+   m_planedist = Vector3.Dot( m_base.transform.position, m_planenormal );
+
+   localplayer = Networking.LocalPlayer;
+
+   m_gm_dkoutline.SetActive( false );
+
+   sn_lobbyclosed = true;
+   _htmenu_viewtimer();
+   _htmenu_viewteams();
+   _htmenu_viewgm();
+   _htmenuview();
+}
+
+// View gamemode changes
+void _htmenu_viewgm()
+{
+   for( int i = 0; i < m_gamemode_buttons.Length; i ++ )
+   {
+      if( sn_gamemode == (uint)i )
+      {
+         m_gamemode_buttons[ i ].GetComponent< MeshFilter >().sharedMesh = m_buttonmeshes[ (k_EButtonMesh_8ball + i) * 3 + 1 ];
+      }
+      else
+      {
+         m_gamemode_buttons[ i ].GetComponent< MeshFilter >().sharedMesh = m_buttonmeshes[ (k_EButtonMesh_8ball + i) * 3 ];
+      }
+   }
+}
+
+void _htmenu_viewjoin()
+{
+   int playernum = 0;
+
+   if( !sn_lobbyclosed )
+   {
+      VRCPlayerApi host = Networking.GetOwner( m_playerslot_owners[ 0 ] );
+
+      // Check out player names
+      for( int i = 0; i < (sn_teams? 4: 2); i ++ )
+      {
+         VRCPlayerApi player = Networking.GetOwner( m_playerslot_owners[ i ] );
+
+         // Mark host
+         if( i == 0 )
+         {
+            m_lobbyNames[ i ].text = "<color=\"#f2ecb8\">"+player.displayName+"</color>";
+            playernum ++;
+         }
+         else
+         {
+            // Its us
+            if( local_playerid == i )
+            {
+               // Error: Local believes that we are in lobby, but someone else is there
+               if( player.playerId != Networking.LocalPlayer.playerId )
+               {
+                  _frp( FRP_ERR + "Error: de-sync local lobby status" + FRP_END );
+                  local_playerid = -1;
+                  m_lobbyNames[ i ].text = "<color=\"#ff0000\">ERROR</color>";
+               }
+               else
+               {
+                  playernum ++;
+                  m_lobbyNames[ i ].text = "<color=\"#cae4ed\">"+player.displayName+"</color>";
+               }
+            }
+            else
+            {
+               // Player is joined
+               if( host.playerId != player.playerId )
+               {
+                  m_lobbyNames[ i ].text = "<color=\"#ffffff\">"+player.displayName+"</color>";
+                  playernum ++;
+               }
+               else
+               {
+                  m_lobbyNames[ i ].text = "";
+               }
+            }
+         }
+      }
+   }
+
+   gm_practice = local_playerid == 0 && playernum == 1;
+
+   _frp( "gm_practice: " + gm_practice.ToString() );
+
+   // If in the game
+   if( local_playerid >= 0 )
+   {
+      // Set our team button to the 'leave' button
+      _htbtn_init( m_join_buttons[ local_teamid ], k_EButtonMesh_join_0 + (int)local_teamid, true );
+
+      // Opposite button should become startgame/disabled, 'enabled' if player 0
+      if( local_playerid == 0 )
+      {
+         m_join_buttons[ 1 ].SetActive( true );
+         _htbtn_init( m_join_buttons[ 1 ], k_EButtonMesh_play, true );
+      }
+      else
+      {
+         m_join_buttons[ local_teamid ^ 0x1u ].SetActive( false );
+      }
+   }
+   else // Otherwise, its just join buttons
+   {
+      m_join_buttons[ 0 ].SetActive( true );
+      m_join_buttons[ 1 ].SetActive( true );
+      _htbtn_init( m_join_buttons[ 0 ], k_EButtonMesh_join_0, false );
+      _htbtn_init( m_join_buttons[ 1 ], k_EButtonMesh_join_1, false );
+   }
+}
+
+uint last_viewtimer = 0u;
+bool sound_spinning = false;
+
+void _htmenu_viewtimer()
+{
+   if( last_viewtimer != sn_timer )
+   {
+      aud_main.PlayOneShot( snd_spin );
+      last_viewtimer = sn_timer;
+      sound_spinning = true;
+   }
+
+   m_TimeLimit_x_target = new Vector3( -0.128f * (float)sn_timer, 0.0f, 0.0f );
+}
+
+void _htmenu_viewteams()
+{
+   m_TeamCover_target_s = sn_teams? new Vector3(0,1,1): new Vector3(1,1,1);
+   _htbtn_init( m_teambuttons[ 0 ], k_EButtonMesh_red,  !sn_teams );
+   _htbtn_init( m_teambuttons[ 1 ], k_EButtonMesh_green, sn_teams );
+
+   _htmenu_viewjoin();
+}
+
+void _htmenuview()
+{
+   if( sn_lobbyclosed )
+   {
+      m_menuLoc_swt = Vector3.one;
+   }
+   else
+   {
+      m_menuLoc_swt = Vector3.zero;
+   }
+}
+
+uint  gm_target      = 0u;
+float gm_minheight   = Mathf.Infinity;
+
+bool _buttonpressed( GameObject btn, int typeid )
+{
+   // Set automatic id's 
+   m_auto_id ++;
+   m_auto_btnobjs[ m_auto_id ] = btn;
+
+   Vector3 delta; Vector3 tmp_pos;
+   delta = btn.transform.localPosition - m_cursor;
+
+   if( Mathf.Abs( delta.x ) < m_current_x && Mathf.Abs( delta.z ) <  m_current_y )
+   {
+      if( m_desktop )
+      {
+         // Visual transform
+         if( Input.GetButton( "Fire1" ) )
+         {
+            tmp_pos = btn.transform.localPosition;
+            tmp_pos.y = 0.0f;
+            btn.transform.localPosition = tmp_pos;
+         }
+
+         m_gm_dkoutline.SetActive( true );
+         m_gm_dkoutline.transform.localPosition = btn.transform.localPosition;
+         m_gm_dkoutline.transform.localRotation = btn.transform.localRotation;
+
+         m_outline_filter.sharedMesh = m_buttonmeshes[ typeid * 3 + 2 ];
+
+         // Actuation
+         if( Input.GetButtonDown( "Fire1" ) )
+         {
+            _htmenu_buttonpressed();
+            return true;
+         }
+      }
+      else // VR
+      {
+         // Button range
+         if( m_cursor.y < k_mGmButtonA && m_cursor.y > -0.1f )
+         {
+            // Update visual position
+            tmp_pos = btn.transform.localPosition;
+            tmp_pos.y = Mathf.Clamp( m_cursor.y, 0.0f, tmp_pos.y );
+            btn.transform.localPosition = tmp_pos;
+
+            m_auto_btnstate[ m_auto_id ] |= k_ButtonState_Pressing;
+
+            if( m_cursor.y <= 0.0f ) // Actuation
+            {
+               // Rising edge
+               if( m_auto_btnstate[ m_auto_id ] == k_ButtonState_Pressing )
+               {
+                  m_auto_btnstate[ m_auto_id ] |= k_ButtonState_Triggered;
+
+                  _htmenu_buttonpressed();
+                  return true;
+               }
+            }
+         }
+      }
+   }
+
+   return false;
+}
+
+// Join lobby
+void _htjoinplayer( int id )
+{
+   _frp( FRP_YES + "_htjoinplayer: " + id + FRP_END );
+
+   local_playerid = id;
+   local_teamid = ((uint)id & 0x2u) >> 1;
+   Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ id ] );
+
+   _htmenu_viewjoin();
+}
+
+// Join team locally
+void _htjointeam( int id )
+{
+   _frp( FRP_LOW + "_htjointeam: " + id + FRP_END );
+
+   // Leave routine
+   if( local_playerid >= 0 )
+   {
+      // Close lobby
+      if( local_playerid == 0 )
+      {
+         if( id == 0 )
+         {
+            _frp( FRP_ERR + "( closing lobby )" + FRP_END );
+            sn_lobbyclosed = true;
+            local_playerid = -1;
+
+            _htmenuview();
+            Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+            _netpack_lossy();
+         }
+         else
+         {
+            _frp( FRP_YES + "Starting game!" + FRP_END );
+            _tr_newgame();
+            return;
+         }
+      }
+      else
+      {
+         if( (int)local_teamid == id )
+         {
+            _frp( FRP_WARN + "( leaving lobby )" + FRP_END );
+            
+            // Set owner back to host
+            Networking.SetOwner( Networking.GetOwner( m_playerslot_owners[ 0 ] ), m_playerslot_owners[ local_playerid ] );
+
+            // Mark locally out of game
+            local_playerid = -1;
+         }
+         else
+         {
+            _frp( FRP_LOW + "this button does nothing" + FRP_END );
+         }
+      }
+
+      _htmenu_viewjoin();
+      return;
+   }
+
+   // Create new lobby
+   if( sn_lobbyclosed )
+   {
+      _frp( FRP_YES + "Creating lobby" + FRP_END );
+
+      // Assign other players to us to signify not joined
+      Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 1 ] );
+      Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 2 ] );
+      Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 3 ] );
+      
+      sn_lobbyclosed = false;
+      
+      Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+      _netpack_lossy();
+
+      _htjoinplayer( 0 );
+      _htmenuview();
+      return;
+   }
+
+   VRCPlayerApi gameHost = Networking.GetOwner( m_playerslot_owners[ 0 ] );
+
+   // Check for open spot on team
+   // Team 1
+   if( id == 1 )
+   {
+      if( Networking.GetOwner( m_playerslot_owners[ 1 ] ).playerId == gameHost.playerId )
+      {
+         _htjoinplayer( 1 );
+      }
+      else if( sn_teams && (Networking.GetOwner( m_playerslot_owners[ 3 ] ).playerId == gameHost.playerId) )
+      {
+         _htjoinplayer( 3 );
+      }
+      else
+      {
+         _frp( FRP_ERR + "no slot availible" + FRP_END );
+      }
+   } 
+
+   // Team 2
+   else if( sn_teams && (Networking.GetOwner( m_playerslot_owners[ 2 ] ).playerId == gameHost.playerId) )
+   {
+      _htjoinplayer( 2 );
+   }
+   else
+   {
+      _frp( FRP_ERR + "no slot availible" + FRP_END );
+   }
+}
+
+void _htmenu_resetnetwork()
+{
+   sn_lobbyclosed = true;
+
+   if( Networking.GetOwner( this.gameObject ) == Networking.LocalPlayer )
+   {
+      Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 0 ] );
+      Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 1 ] );
+      Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 2 ] );
+      Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 3 ] );
+
+      _netpack_lossy();
+   }
+}
+
+// Find button target
+void _htmenu_trimin()
+{
+   m_auto_id = -1;
+
+   GameObject btn;
+
+   // Join / Leave buttons
+   m_current_x = k_mGmButtonW;
+   m_current_y = k_mGmButtonH;
+
+   if( sn_lobbyclosed )
+   {
+      if( _buttonpressed( m_newGameBtn, k_EButtonMesh_play ) )
+      {
+         _htjointeam( 0 );
+      }
+   }
+   else
+   {
+      for( int i = 0; i < m_join_buttons.Length; i ++ )
+      {
+         btn = m_join_buttons[ i ];
+
+         if( _buttonpressed( btn, k_EButtonMesh_join_0 + i ) )
+         {
+            _htjointeam( i );
+         }
+      }
+
+      if( local_playerid == 0 ) // Host only
+      {
+         // Gamemode buttons
+         m_current_x = k_mGmButtonW;
+         m_current_y = k_mGmButtonH;
+
+         for( int i = 0; i < m_gamemode_buttons.Length; i ++ )
+         {
+            btn = m_gamemode_buttons[ i ];
+      
+            if( _buttonpressed( btn, k_EButtonMesh_8ball + i ) )
+            {
+               sn_gamemode = (uint)i;
+               _htmenu_viewgm();
+               _netpack_lossy();
+            }
+         }
+
+         // Smol buttons
+         m_current_x = k_mSmolButtonR;
+         m_current_y = k_mSmolButtonR;
+
+         // Timelimit buttons
+         if( _buttonpressed( m_timebuttons[ 1 ], k_EButtonMesh_triangle ) )
+         {
+            if( sn_timer > 0 )
+            {
+               sn_timer --;
+
+               _htmenu_viewtimer();
+               _netpack_lossy();
+            }
+         }
+         if( _buttonpressed( m_timebuttons[ 0 ], k_EButtonMesh_triangle ) )
+         {
+            if( sn_timer < 2 )
+            {
+               sn_timer ++;
+
+               _htmenu_viewtimer();
+               _netpack_lossy();
+            }
+         }
+
+         // Teams enabled buttons
+         if( _buttonpressed( m_teambuttons[ 0 ], k_EButtonMesh_red ) )
+         {
+            sn_teams = false;
+            
+            // Kick players
+            Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 2 ] );
+            Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 3 ] );
+
+            _htmenu_viewteams();
+            _netpack_lossy();
+         }
+         if( _buttonpressed( m_teambuttons[ 1 ], k_EButtonMesh_green ) )
+         {
+            sn_teams = true;
+
+            _htmenu_viewteams();
+            _netpack_lossy();
+         }
+      }
+   }
+}
+
+void _htmenu_buttonpressed()
+{
+   aud_main.PlayOneShot( snd_btn );
+}
+
+void _htmenu_begin()
+{
+   Vector3 tmp_pos;
+   GameObject btn;
+
+   for( int i = 0; i <= m_auto_id; i ++ )
+   {
+      if( m_auto_btnstate[ i ] == k_ButtonState_ShouldReset )
+      {
+         m_auto_btnstate[ i ] = k_ButtonState_None;
+      }
+
+      // Reset button Y position
+      btn = m_auto_btnobjs[ i ];
+      tmp_pos = btn.transform.localPosition;
+      tmp_pos.y = k_mGmButtonA;
+      btn.transform.localPosition = tmp_pos;
+
+      // Disables pressed so it can be re-set
+      m_auto_btnstate[ i ] &= k_ButtonState_FrameMask;
+   }
+}
+
+void _htmenu_enter()
+{
+   m_base.SetActive( true );
+   _htmenu_resetnetwork();
+
+   _htmenu_viewtimer();
+   _htmenu_viewteams();
+   _htmenu_viewgm();
+   _htmenu_viewjoin();
+   _htmenuview();
+}
+
+void _htmenu_exit()
+{
+   sn_lobbyclosed = true;
+   m_base.SetActive( false );
+}
+
+float next_refresh = 0.0f;
+
+void _htmenu_update()
+{
+   #if UNITY_EDITOR
+   return;
+   #endif
+
+   m_desktop = !Networking.LocalPlayer.IsUserInVR();
+
+   if( Time.timeSinceLevelLoad > next_refresh )
+   {
+      _htmenu_viewjoin();
+      next_refresh = Time.timeSinceLevelLoad + 0.5f;
+   }
+
+   // Desktop: Project cursor onto plane
+   if( m_desktop )
+   {
+      m_gm_dkoutline.SetActive( false );
+
+      VRCPlayerApi.TrackingData hmd = localplayer.GetTrackingData( VRCPlayerApi.TrackingDataType.Head );
+      m_cursor = _plane_line_intersect( m_planenormal, m_planedist, hmd.position, hmd.position + (hmd.rotation * Vector3.forward) );
+
+      #if MENU_DEV
+      m_devcursor.transform.position = m_cursor;
+      #endif
+
+      // Localize m_cursor
+      m_cursor = m_base.transform.InverseTransformPoint( m_cursor );
+
+      _htmenu_begin();
+      _htmenu_trimin();
+   }
+   else
+   {
+      #if MENU_DEV
+      m_devcursor.transform.position = localplayer.GetBonePosition( HumanBodyBones.RightIndexDistal );
+      #endif
+
+      _htmenu_begin(); 
+
+      // VR use figer tips / hand positions
+      m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.LeftIndexDistal ) );
+      _htmenu_trimin();
+
+      m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.LeftIndexProximal ) );
+      _htmenu_trimin();
+
+      m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.RightIndexDistal ) );
+      _htmenu_trimin();
+
+      m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.RightIndexProximal ) );
+      _htmenu_trimin();
+   }
+
+   // Update visual stuff
+   m_TeamCover_current_s = Vector3.Lerp( m_TeamCover_current_s, m_TeamCover_target_s, Time.deltaTime * 5.0f );
+   m_TimeLimit_x_current = Vector3.Lerp( m_TimeLimit_x_current, m_TimeLimit_x_target, Time.deltaTime * 5.0f );
+   m_menuLoc_sw = Vector3.Lerp( m_menuLoc_sw, m_menuLoc_swt, Time.deltaTime * 5.0f );
+
+   // Stop sound
+   if( sound_spinning && Vector3.Distance( m_TimeLimit_x_current, m_TimeLimit_x_target ) < 0.01f )
+   {
+      sound_spinning = false;
+      aud_main.PlayOneShot( snd_spinstop );
+   }
+
+   m_TeamCover.transform.localScale = m_TeamCover_current_s;
+   m_TimeLimitDisp.transform.localPosition = m_TimeLimit_x_current;
+
+   // Menu locations scale swap
+   m_menuLoc_start.transform.localScale = m_menuLoc_sw;
+   m_menuLoc_main.transform.localScale = Vector3.one - m_menuLoc_sw;
+}
+
+#if UNITY_EDITOR
+void HTEditorUI()
+{
    
-   gripControllers[ sn_turnid ]._dk_cpytarget();
 }
 #endif
 
 #endregion
+
 
 float timeLast;
 float accum;
@@ -2058,38 +2791,301 @@ void _sn_cpyprev()
    sn_gameover_prv = sn_gameover;
    sn_gameid_prv = sn_gameid;
 
+   // Since 1.0.0
+   sn_gamemode_prv = sn_gamemode;
+   sn_timer_prv = sn_timer;
+   sn_teams_prv = sn_teams;
+   sn_lobbyclosed_prv = sn_lobbyclosed;
+
    //sn_pocketed_prv = sn_pocketed;    this one needs to be independent 
    //sn_simulating_prv = sn_simulating;
    //sn_foul_prv = sn_foul;
    //sn_playerxor_prv = sn_playerxor;
    //sn_winnerid_prv = sn_winnerid;
    //sn_permit_prv = sn_permit;
+}
+
+Vector3 dkCursor = new Vector3( 0.0f, 2.0f, 0.0f );
+Vector3 dkHitCursor = new Vector3( 0.0f, 0.0f, 0.0f );
+
+[SerializeField] GameObject dkCursorObj;
+[SerializeField] GameObject dkHitPos;
+[SerializeField] GameObject desktopBase;
+[SerializeField] GameObject desktopQuad;
+[SerializeField] GameObject[] dkStickBases;
+[SerializeField] GameObject dkOverlayPwr;
+
+const float k_DesktopCursorSpeed = 0.035f;
+bool dkShootingIn = false;
+bool dkSafeRemove = true;
+Vector3 dkShootVector;
+Vector3 dkSafeRemovePoint;
+float dkShootReference = 0.0f;
+float dkClampX = k_TABLE_WIDTH;
+float dkClampY = k_TABLE_HEIGHT;
+bool turnLocalLive = false;
+
+bool dkFrameIgnore = false;
+
+// Cue picked up local
+public void _ht_desktop_enter()
+{
+   dk_shootui = true;
+   dkFrameIgnore = true;
+   desktopBase.SetActive( true );
+
+   // Lock player in place
+   Networking.LocalPlayer.SetWalkSpeed( 0.0f );
+   Networking.LocalPlayer.SetRunSpeed( 0.0f );
+   Networking.LocalPlayer.SetStrafeSpeed( 0.0f );
+
+   _frp( FRP_LOW + "Entering desktop overlay" + FRP_END );
+}
+
+// Cue put down local
+public void _ht_desktop_cue_down()
+{
+   _ht_desktopui_exit();
+}
+
+void _ht_desktopui_exit()
+{
+   dk_shootui = false;
+   desktopBase.SetActive( false );
+
+   #if !HT_QUEST
+
+   gripControllers[ 0 ].dkPrimaryControl = true;
+   gripControllers[ 1 ].dkPrimaryControl = true;
+
+   Networking.LocalPlayer.SetWalkSpeed( 2.0f );
+   Networking.LocalPlayer.SetRunSpeed( 4.0f );
+   Networking.LocalPlayer.SetStrafeSpeed( 2.0f );
+
+   #endif
+}
+
+void _dk_AllowHit()
+{
+   turnLocalLive = true;
+
+   // Reset hit point
+   dkHitCursor = Vector3.zero;
+}
+
+void _dk_DenyHit()
+{
+   turnLocalLive = false;
+}
+
+float shootAmt = 0.0f;
+
+void _ht_desktopui_update()
+{
+   if( dkFrameIgnore )
+   {
+      dkFrameIgnore = false;
+      return;
+   }
    
-   // Since 1.0.0
-   //sn_gamemode_prv = sn_gamemode;
-   //sn_colourset_prv = sn_colourset;
-   //sn_timer_prv = sn_timer;
+   if( Input.GetKeyDown( KeyCode.E ) )
+   {
+      _ht_desktopui_exit();
+      return;
+   }
+
+   // Keep UI rendering
+   VRCPlayerApi.TrackingData hmd = localplayer.GetTrackingData( VRCPlayerApi.TrackingDataType.Head );
+   desktopQuad.transform.position = hmd.position + hmd.rotation * Vector3.forward;
+
+   dkCursor.x = Mathf.Clamp
+   ( 
+      dkCursor.x + Input.GetAxis("Mouse X") * k_DesktopCursorSpeed,
+      -dkClampX,
+       dkClampX
+   );
+   dkCursor.z = Mathf.Clamp
+   ( 
+      dkCursor.z + Input.GetAxis("Mouse Y") * k_DesktopCursorSpeed,
+      -dkClampY,
+       dkClampY
+   );
+
+   if( turnLocalLive )
+   {
+      Vector3 ncursor = dkCursor;
+      ncursor.y = 0.0f;
+      Vector3 delta = ncursor - ball_CO[ 0 ];
+      GameObject cue = dkStickBases[ sn_turnid ];
+
+      if( Input.GetButton( "Fire1" ) )
+      {
+         if( !dkShootingIn )
+         {
+            dkShootingIn = true;
+
+            // Create shooting vector
+            dkShootVector = delta.normalized;
+
+            // Project reference start point
+            dkShootReference = Vector3.Dot( dkShootVector, ncursor );
+
+            // Create copy of cursor for later
+            dkSafeRemovePoint = dkCursor;
+
+            // Unlock cursor position from table
+            dkClampX = Mathf.Infinity;
+            dkClampY = Mathf.Infinity;
+         }
+
+         // Calculate shoot amount via projection
+         shootAmt = dkShootReference - Vector3.Dot( dkShootVector, ncursor );
+         dkSafeRemove = shootAmt < 0.0f;
+
+         shootAmt = Mathf.Clamp( shootAmt, 0.0f, 0.5f );
+
+         // Set delta back to dkShootVector
+         delta = dkShootVector;
+
+         // Disable cursor in shooting mode
+         dkCursorObj.SetActive( false );
+      }
+      else
+      {
+         // Trigger shot
+         if( dkShootingIn )
+         {
+            // Shot cancel
+            if( dkSafeRemove )
+            {
+
+            }
+            else // FIREEEEE 
+            {
+               // Fake hit ( kinda )
+               float vel = Mathf.Pow( shootAmt * 2.0f, 1.4f )*9.0f;
+            
+               ball_V[ 0 ] = dkShootVector * vel;
+
+               Vector3 r_1 = (RaySphere_output - ball_CO[ 0 ]) * k_BALL_1OR;
+               Vector3 p = dkShootVector.normalized * vel;
+               ball_W[ 0 ] = Vector3.Cross( r_1, p ) * -25.0f;
+
+               #if HT8B_DEBUGGER
+               _frp( FRP_WARN + "Angular velocity: " + ball_W[ 0 ].ToString() + ". Velocity: " + ball_V[ 0 ].ToString() + FRP_END );
+               #endif
+
+               cue.transform.localPosition = new Vector3( 2000.0f, 2000.0f, 2000.0f );
+               turnLocalLive = false;
+               _hit_general();
+            }
+
+            // Restore cursor position
+            dkCursor = dkSafeRemovePoint;
+            dkClampX = k_TABLE_WIDTH;
+            dkClampY = k_TABLE_HEIGHT;
+
+            // 1-frame override to fix rotation
+            delta = dkShootVector;
+         }
+
+         dkShootingIn = false;
+         shootAmt = 0.0f;
+         dkCursorObj.SetActive( true );
+      }
+
+      if( Input.GetKey( KeyCode.W ) )
+      {
+         dkHitCursor += Vector3.forward * Time.deltaTime;
+      }
+      if( Input.GetKey( KeyCode.S ) )
+      {
+         dkHitCursor += Vector3.back * Time.deltaTime;
+      }
+      if( Input.GetKey( KeyCode.A ) )
+      {
+         dkHitCursor += Vector3.left * Time.deltaTime;
+      }
+      if( Input.GetKey( KeyCode.D ) )
+      {
+         dkHitCursor += Vector3.right * Time.deltaTime;
+      }
+
+      // Clamp in circle
+      if( dkHitCursor.magnitude > 0.90f )
+      {
+         dkHitCursor = dkHitCursor.normalized * 0.9f;
+      }
+
+      dkHitPos.transform.localPosition = dkHitCursor;
+   
+      // Get angle
+      float ang = Mathf.Atan2( delta.x, delta.z );
+
+      // Create rotation
+      Quaternion xr = Quaternion.AngleAxis( 10.0f, Vector3.right );
+      Quaternion r = Quaternion.AngleAxis( ang * Mathf.Rad2Deg, Vector3.up );
+      
+      Vector3 worldHit = new Vector3(  dkHitCursor.x * k_BALL_PL_X, dkHitCursor.z * k_BALL_PL_X, -0.89f -shootAmt );
+
+      cue.transform.localRotation = r * xr;
+      cue.transform.position = this.transform.TransformPoint( ball_CO[ 0 ] + (r * xr * worldHit) );
+   }
+
+   dkCursorObj.transform.localPosition = dkCursor;
+   dkOverlayPwr.transform.localScale = new Vector3( 1.0f-(shootAmt*2.0f), 1.0f, 1.0f );
 }
 
 #region R_UNITY_MAGIC
 
+void _hit_general()
+{
+   // Make sure repositioner is turned off if the player decides he just
+   // wanted to hit it without putting it somewhere
+   isReposition = false;
+   markerObj.SetActive( false );
+   devhit.SetActive( false );
+   guideline.SetActive( false );
+
+   // Remove locks
+   _tr_endhit();
+   sn_permit = false;
+   sn_foul = false;  // In case did not drop foul marker
+
+   #if HT8B_DEBUGGER
+   _frp( FRP_LOW + "Commiting changes" + FRP_END );
+   #endif
+
+   // Commit changes
+   sn_simulating = true;
+   sn_pocketed_prv = sn_pocketed;
+
+   // Make sure we definately are the network owner
+   Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
+
+   _netpack( sn_turnid );
+   _netread();
+
+   sn_oursim = true;
+}
+
 private void Update()
 {
-#if !COMPILE_FUNC_TESTS
-   // Control is purely in menu behaviour
-   if( gameIdle )
-      return;
-#else
-
-   
-
-#endif
-
    // Physics step accumulator routine
    float time = Time.timeSinceLevelLoad;
    float timeDelta = time - timeLast;
 
    timeLast = time;
+
+   if( particle_alive )
+   {
+      _vis_floaty_eval();
+   }
+
+   if( dk_shootui )
+   {
+      _ht_desktopui_update();
+   }
       
    // Run sim only if things are moving
    if( sn_simulating )
@@ -2105,6 +3101,15 @@ private void Update()
       {
          _phys_step();
          accum -= k_FIXED_TIME_STEP;
+      }
+   }
+   else
+   {
+      // Control is in menu behaviour
+      if( sn_gameover )
+      {
+         _htmenu_update();
+         return;
       }
    }
 
@@ -2168,14 +3173,6 @@ private void Update()
          // Hit condition is when cuetip is gone inside ball
          if( (lpos2 - cueball_pos).sqrMagnitude < k_BALL_RSQR )
          {
-            // Make sure repositioner is turned off if the player decides he just
-            // wanted to hit it without putting it somewhere
-            isReposition = false;
-            markerObj.SetActive( false );
-
-            devhit.SetActive( false );
-            guideline.SetActive( false );
-
             Vector3 horizontal_force = lpos2 - cue_llpos;
             horizontal_force.y = 0.0f;
 
@@ -2188,37 +3185,13 @@ private void Update()
             // Angular velocity: L=r(normalized)×p
             Vector3 r = (RaySphere_output - cueball_pos) * k_BALL_1OR;
             Vector3 p = cue_vdir * vel;
-            ball_W[ 0 ] = Vector3.Cross( r, p ) * -60.0f;
+            ball_W[ 0 ] = Vector3.Cross( r, p ) * -50.0f;
 
             #if HT8B_DEBUGGER
             _frp( FRP_WARN + "Angular velocity: " + ball_W[ 0 ].ToString() + ". Velocity: " + ball_V[ 0 ].ToString() + FRP_END );
             #endif
 
-            // Remove locks
-            _tr_endhit();
-            sn_permit = false;
-
-            #if HT8B_DEBUGGER
-            _frp( FRP_LOW + "Commiting changes" + FRP_END );
-            #endif
-
-            // Commit changes
-            sn_simulating = true;
-            sn_pocketed_prv = sn_pocketed;
-
-#if !HT_QUEST
-            // Remove desktop locks
-            gripControllers[0]._dk_endhit();
-            gripControllers[1]._dk_endhit();
-#endif
-
-            // Make sure we definately are the network owner
-            Networking.SetOwner( Networking.LocalPlayer, this.gameObject );
-
-            _netpack( sn_turnid );
-            _netread();
-
-            sn_oursim = true;
+            _hit_general();
          }
       }
       else
@@ -2231,17 +3204,25 @@ private void Update()
             guideline.SetActive( true );
             devhit.SetActive( true );
             devhit.transform.localPosition = RaySphere_output;
-            guidefspin.transform.localScale = new Vector3( RaySphere_output.y * 33.3333333333f, 1.0f, 1.0f );
 
-            Vector3 scuffdir = ( cueball_pos - RaySphere_output );
-            scuffdir.y = 0.0f;
             cue_shotdir = cue_vdir;
             cue_shotdir.y = 0.0f;
-            cue_shotdir += scuffdir.normalized * 0.2f;
+
+            if( dk_shootui )
+            {
+            }
+            else
+            {
+               // Compute deflection in VR mode
+               Vector3 scuffdir = ( cueball_pos - RaySphere_output );
+               scuffdir.y = 0.0f;
+               cue_shotdir += scuffdir.normalized * 0.17f;
+            }
 
             cue_fdir = Mathf.Atan2( cue_shotdir.z, cue_shotdir.x );
 
             // Update the prediction line direction
+            guideline.transform.localPosition = ball_CO[ 0 ];
             guideline.transform.localEulerAngles = new Vector3( 0.0f, -cue_fdir * Mathf.Rad2Deg, 0.0f );
          }
          else
@@ -2306,13 +3287,8 @@ private void Update()
    }
 
 #if !HT_QUEST
-   #if MULTIGAMES_PORTAL
-   target_surface.SetColor( uniform_tablecolour, 
-      new Color( tableCurrentColour.r, tableCurrentColour.g, tableCurrentColour.b, time_percentage ) );
-   #else
    tableMaterial.SetColor( uniform_tablecolour, 
       new Color( tableCurrentColour.r, tableCurrentColour.g, tableCurrentColour.b, time_percentage ) );
-   #endif
 #endif
 
    // Intro animation
@@ -2350,10 +3326,8 @@ private void Update()
 
 private void Start()
 {
-   #if MULTIGAMES_PORTAL
-   target_surface = tableMaterial;
-   #endif
-
+   aud_main = this.GetComponent<AudioSource>();
+   _htmenu_init();
    _sn_cpyprev();
 
    #if HT8B_DEBUGGER
@@ -2363,31 +3337,11 @@ private void Start()
    #if COMPILE_FUNC_TESTS
    _setup_break();
    #endif
-
-#if USE_INT_UNIFORMS
-
-   // Gather shader uniforms
-   uniform_tablecolour = Shader.PropertyToID( "_EmissionColour" );
-   uniform_scorecard_colour0 = Shader.PropertyToID( "_Colour0" );
-   uniform_scorecard_colour1 = Shader.PropertyToID( "_Colour1" );
-   uniform_scorecard_info = Shader.PropertyToID( "_Info" );
-   uniform_marker_colour = Shader.PropertyToID( "_Color" );
-   uniform_cue_colour = Shader.PropertyToID( "_ReColor" );
    
-#endif
-
-   aud_main = this.GetComponent<AudioSource>();
-   //tableRenderer = gametable.GetComponent<Renderer>();
-
    guidelineMat.SetMatrix( "_BaseTransform", this.transform.worldToLocalMatrix );
 
    // turn off guideline
-   guideline.SetActive( false );
-   devhit.SetActive( false );
-   infBaseTransform.SetActive( false );
-   markerObj.SetActive( false );
-   tableoverlayUI.SetActive( false );
-   marker9ball.SetActive( false );
+   _vis_disableobjects();
 }
 
 #endregion
@@ -2407,8 +3361,6 @@ public void _setup_break()
    sn_simulating = false;
    sn_open = true;
    sn_gameover = false;
-
-   // Doesnt need to be set but for consistencys sake
    sn_playerxor = 0;
    sn_winnerid = 0;
 
@@ -2427,13 +3379,19 @@ public void _setup_break()
          int rown = break_rows_9ball[ i ];
          for( int j = 0; j <= rown; j ++ )
          {
-            ball_CO[ break_order_9ball[ k ++ ] ] = new Vector3( k_SPOT_POSITION_X + (float)i * k_BALL_PL_Y, 0.0f, (float)(-rown + j * 2) * k_BALL_PL_X );
+            ball_CO[ break_order_9ball[ k ++ ] ] = new Vector3
+            ( 
+               k_SPOT_POSITION_X + (float)i * k_BALL_PL_Y + UnityEngine.Random.Range(-k_RANDOMIZE_F, k_RANDOMIZE_F), 
+               0.0f, 
+               (float)(-rown + j * 2) * k_BALL_PL_X + UnityEngine.Random.Range(-k_RANDOMIZE_F, k_RANDOMIZE_F)
+            );
+
             ball_V[ k ] = Vector3.zero;
             ball_W[ k ] = Vector3.zero;
          }
       }
    }
-   else if( gm_is_3 ) // 4 ball
+   else if( gm_is_2 ) // 4 ball
    {
       sn_pocketed = 0xFDF2u;
 
@@ -2446,6 +3404,11 @@ public void _setup_break()
       ball_V[ 9 ] = Vector3.zero;
       ball_V[ 2 ] = Vector3.zero;
       ball_V[ 3 ] = Vector3.zero;
+
+      ball_W[ 0 ] = Vector3.zero;
+      ball_W[ 9 ] = Vector3.zero;
+      ball_W[ 2 ] = Vector3.zero;
+      ball_W[ 3 ] = Vector3.zero;
    }
    else // Normal 8 ball modes
    {
@@ -2455,7 +3418,13 @@ public void _setup_break()
       {
          for( int j = 0; j <= i; j ++ )
          {
-            ball_CO[ break_order_8ball[ k ++ ] ] = new Vector3( k_SPOT_POSITION_X + (float)i * k_BALL_PL_Y, 0.0f, (float)(-i + j * 2) * k_BALL_PL_X );
+            ball_CO[ break_order_8ball[ k ++ ] ] = new Vector3
+            ( 
+               k_SPOT_POSITION_X + (float)i * k_BALL_PL_Y + UnityEngine.Random.Range(-k_RANDOMIZE_F, k_RANDOMIZE_F), 
+               0.0f, 
+               (float)(-i + j * 2) * k_BALL_PL_X + UnityEngine.Random.Range(-k_RANDOMIZE_F, k_RANDOMIZE_F)
+            );
+
             ball_V[ k ] = Vector3.zero;
             ball_W[ k ] = Vector3.zero;
          }
@@ -2475,7 +3444,7 @@ public void _setup_break()
 public void _tr_starthit()
 {
    // lock aim variables
-   bool isOurTurn = (local_playerid >= 0) && (local_teamid == sn_turnid);
+   bool isOurTurn = ((local_playerid >= 0) && (local_teamid == sn_turnid)) || gm_practice;
 
    if( isOurTurn )
    {
@@ -2505,10 +3474,6 @@ public void _tr_placeball()
       isReposition = false;
       markerObj.SetActive( false );
 
-#if !HT_QUEST
-      _dk_updatetarget();
-#endif
-
       sn_permit = true;
       sn_foul = false;
 
@@ -2530,12 +3495,6 @@ public void _tr_newgame()
       _frp( FRP_YES + "Starting new game" + FRP_END );
       #endif
 
-      // Pull in menu variables
-      sn_gamemode = (uint)menuController.gamemode_id;
-      sn_colourset = (uint)menuController.colour_id;
-      sn_timer = (uint)menuController.timer_id;
-      sn_teams = (uint)menuController.teams_allowed == 0x1u;
-
       // Get gamestate rolling
       sn_gameid ++;
       sn_permit = true;
@@ -2543,11 +3502,15 @@ public void _tr_newgame()
       _onlocal_newgame();
 
       // Overrides
-      if( gm_is_2 )
-      {
-         sn_timer = 0u;
-         sn_teams = false;
-      }
+      //if( gm_is_2 )
+      //{
+      // sn_timer = 0u;
+      // sn_teams = false;
+      //}
+
+      sn_turnid = 0;
+      sn_turnid_prv = 0;
+      _onlocal_turnchange();
 
       // Following is overrides of NewGameLocal, for game STARTER only
       _setup_break();
@@ -2582,17 +3545,16 @@ public void _tr_force_end()
    // this is simply to prevent trolls running in and force resetting at random
 
    if( Networking.LocalPlayer == Networking.GetOwner( playerTotems[0] ) ||
-      Networking.LocalPlayer == Networking.GetOwner( playerTotems[1] ))
+      Networking.LocalPlayer == Networking.GetOwner( playerTotems[1] )
+      || sn_gameover )
    {
       #if HT8B_DEBUGGER
       _frp( FRP_WARN + "Ending game early" + FRP_END );
       #endif
 
       sn_gameover = true;
-      sn_simulating = false;
       sn_permit = false;
-
-      // sn_winnerid    = 0x00U;
+      sn_simulating = false;
 
       // For good measure in case other clients trigger an event whilst owner
       sn_packetid += 2;
@@ -2643,9 +3605,9 @@ void _encode_vec3( int pos, Vector3 vec, float range )
 // 6 char string from Vector3. Encodes floats in: [ -range, range ] to 0-65535
 void _encode_vec3_full( int pos, Vector3 vec, float range )
 {
-   _encode_u16( pos, (ushort)((vec.x / range) * I16_MAXf + I16_MAXf ) );
-   _encode_u16( pos + 2, (ushort)((vec.y / range) * I16_MAXf + I16_MAXf ) );
-   _encode_u16( pos + 4, (ushort)((vec.z / range) * I16_MAXf + I16_MAXf ) );
+   _encode_u16( pos, (ushort)((Mathf.Clamp( vec.x, -range, range ) / range) * I16_MAXf + I16_MAXf ) );
+   _encode_u16( pos + 2, (ushort)((Mathf.Clamp( vec.y, -range, range ) / range) * I16_MAXf + I16_MAXf ) );
+   _encode_u16( pos + 4, (ushort)((Mathf.Clamp( vec.z, -range, range ) / range) * I16_MAXf + I16_MAXf ) );
 }
 
 // Decode 4 chars at index to Vector3 (x,z). Decodes from 0-65535 to [ -range, range ]
@@ -2658,7 +3620,7 @@ Vector3 _decode_vec3( int start, float range )
    float y = ((_y - I16_MAXf) / I16_MAXf) * range;
       
    return new Vector3( x, 0.0f, y );
-} 
+}
 
 // Decode 6 chars at index to Vector3. Decodes from 0-65535 to [ -range, range ]
 Vector3 _decode_vec3_full( int start, float range )
@@ -2674,6 +3636,34 @@ Vector3 _decode_vec3_full( int start, float range )
    return new Vector3( x, y, z );
 } 
 
+public void _netpack_lossy()
+{
+   if( !sn_gameover )
+   {
+      #if HT8B_DEBUGGER
+      _frp( FRP_ERR + "Critical error: gameover was false when trying to _netpack_lossy()" + FRP_END );
+      #endif
+      return;
+   }
+
+   // Game state
+   uint flags = 0x20u;                 // bit #
+
+   // Since v1.0.0
+   flags |= sn_gamemode << 8;          // 8  - 3 bits
+   flags |= sn_timer << 13;            // 13 - 2 bits
+   if( sn_teams ) flags |= 0x8000u;    // 15 - 1 bit
+   if( sn_lobbyclosed ) flags |= 0x800u;
+
+   _encode_u16( 0x4C, (ushort)flags );
+
+   sn_packetid = (ushort)(sn_packetid + 1u);
+   _encode_u16( 0x4E, (ushort)(sn_packetid) );
+   _encode_u16( 0x50, sn_gameid );
+
+   netstr = Convert.ToBase64String( net_data, Base64FormattingOptions.None );
+}
+
 // Encode all data of game state into netstr
 public void _netpack( uint _turnid )
 {
@@ -2688,8 +3678,6 @@ public void _netpack( uint _turnid )
    // Garuntee array size by reallocating.. because c#
    net_data = new byte[0x52];
 
-   // positions
-   
    for ( int i = 0; i < 16; i ++ )
    {
       _encode_vec3( i * 4, ball_CO[ i ], 2.5f );
@@ -2697,10 +3685,22 @@ public void _netpack( uint _turnid )
 
    // Cue ball velocity & angular velocity last
    _encode_vec3( 0x40, ball_V[ 0 ], 50.0f );
-   //_encode_vec3_full( 0x44, ball_W[ 0 ], 500.0f );
+   _encode_vec3_full( 0x44, ball_W[ 0 ], 500.0f );
 
-   // Encode pocketed imformation
-   _encode_u16( 0x48, (ushort)(sn_pocketed & 0x0000FFFFU) );
+   if( gm_is_2 )
+   {
+      // Encode player scores into gmspec
+      sn_gmspec  = (ushort)(((uint)fb_scores[ 0 ]) & 0x0fu);
+      sn_gmspec |= (ushort)((((uint)fb_scores[ 1 ]) & 0x0fu) << 4);
+
+      // 4 ball specifc ( no pocket info )
+      _encode_u16( 0x4A, sn_gmspec );
+   }
+   else
+   {
+      // Encode pocketed imformation
+      _encode_u16( 0x4A, (ushort)(sn_pocketed & 0x0000FFFFu) );
+   }
 
    // Game state
    uint flags = 0x0U;                  // bit #
@@ -2709,31 +3709,26 @@ public void _netpack( uint _turnid )
    if( sn_foul ) flags |= 0x4U;        // 2
    if( sn_open ) flags |= 0x8U;        // 3
    flags |= sn_playerxor << 4;         // 4
-   if( sn_gameover ) flags |= 0x20U;   // 5
+   if( sn_gameover ) flags |= 0x20u;   // 5
    flags |= sn_winnerid << 6;          // 6
    if( sn_permit ) flags |= 0x80U;     // 7
 
+   if( sn_lobbyclosed ) flags |= 0x800u;
+
    // Since v1.0.0
    flags |= sn_gamemode << 8;          // 8  - 3 bits
-   flags |= sn_colourset << 11;        // 11 - 2 bits
    flags |= sn_timer << 13;            // 13 - 2 bits
-   if( sn_teams ) flags |= 0x8000u; // 15 - 1 bit
+   if( sn_teams ) flags |= 0x8000u;    // 15 - 1 bit
 
-   _encode_u16( 0x4A, (ushort)flags );
+   _encode_u16( 0x4C, (ushort)flags );
 
    // Player ID msb gets added to referee any discrepencies between clients
    // Higher order players get priority because it will be less common
    // to play 2v2, so we can save most packet id's for normal 1v1
    uint msb_playerid = ((uint)local_playerid & 0x2u) >> 1;
 
-   _encode_u16( 0x4C, (ushort)(sn_packetid + 1u + msb_playerid) );
-   _encode_u16( 0x4E, sn_gameid );
-
-   // Encode player scores into gmspec
-   sn_gmspec =  (ushort)(((uint)fb_scores[ 0 ]) & 0x0fu);
-   sn_gmspec |= (ushort)((((uint)fb_scores[ 1 ]) & 0x0fu) << 4);
-
-   _encode_u16( 0x50, sn_gmspec );
+   _encode_u16( 0x4E, (ushort)(sn_packetid + 1u + msb_playerid) );
+   _encode_u16( 0x50, sn_gameid );
 
    netstr = Convert.ToBase64String( net_data, Base64FormattingOptions.None );
 
@@ -2768,7 +3763,7 @@ public void _netread()
    #endif
 
    // Throw out updates that are possible errournous
-   ushort nextid = _decode_u16( 0x4C );
+   ushort nextid = _decode_u16( 0x4E );
    if( nextid <= sn_packetid )
    {
       #if HT8B_DEBUGGER
@@ -2784,20 +3779,20 @@ public void _netread()
 
    // Pocketed information
    // Ball positions, reset velocity
-   /*
+   
    for( int i = 0; i < 16; i ++ )
    {
-      ball_vl[i] = Vector2.zero;
-      ball_co[i] = _decode_vec2( i * 4, 2.5f );
+      ball_V[ i ] = Vector3.zero;
+      ball_W[ i ] = Vector3.zero;
+      ball_CO[ i ] = _decode_vec3( i * 4, 2.5f );
    }
 
-   ball_vl[0] = _decode_vec2( 0x40, 50.0f );
-   cue_avl = _decode_vec2( 0x44, 50.0f );
-   */
+   ball_V[ 0 ] = _decode_vec3( 0x40, 50.0f );
+   ball_W[ 0 ] = _decode_vec3_full( 0x44, 500.0f );
 
-   sn_pocketed = _decode_u16( 0x48 );
+   sn_pocketed = _decode_u16( 0x4A );
 
-   uint gamestate = _decode_u16( 0x4A );
+   uint gamestate = _decode_u16( 0x4C );
    sn_simulating = (gamestate & 0x1U) == 0x1U;
    sn_turnid = (gamestate & 0x2U) >> 1;
    sn_foul = (gamestate & 0x4U) == 0x4U;
@@ -2806,19 +3801,15 @@ public void _netread()
    sn_gameover = (gamestate & 0x20U) == 0x20U;
    sn_winnerid = (gamestate & 0x40U) >> 6;
    sn_permit = (gamestate & 0x80U) == 0x80U; 
+   sn_lobbyclosed = (gamestate & 0x800u) == 0x800u;
 
    // Since v1.0.0
    sn_gamemode = (gamestate & 0x700u) >> 8;        // 3 bits
-   sn_colourset = (gamestate & 0x1800u) >> 11;     // 2 bits
    sn_timer = (gamestate & 0x6000u) >>  13;        // 2 bits
-   sn_teams = (gamestate & 0x8000u) == 0x8000u; //
+   sn_teams = (gamestate & 0x8000u) == 0x8000u;    //
 
    // TODO: allocate more bits to packet ID, less to game ID
-   sn_gameid = _decode_u16( 0x4E );
-   sn_gmspec = _decode_u16( 0x50 );
-
-   fb_scores[ 0 ] =  (int)(sn_gmspec & 0x0fu);
-   fb_scores[ 1 ] = (int)((sn_gmspec & 0xf0u) >> 4);
+   sn_gameid = _decode_u16( 0x50 );
 
    // Events ==========================================================================================================
 
@@ -2863,6 +3854,17 @@ public void _netread()
       #endif
 
       _onlocal_gameover();
+      return;
+   }
+
+   if( sn_gameover )
+   {
+      _htmenu_viewtimer();
+      _htmenu_viewteams();
+      _htmenu_viewgm();
+      _htmenu_viewjoin();
+      _htmenuview();
+      return;
    }
 
    // Effects colliders need to be turned off when not simulating
@@ -2876,11 +3878,20 @@ public void _netread()
       fxColliderBase.SetActive( false );
    }
 
+   if( gm_is_2 )
+   {
+      sn_gmspec = _decode_u16( 0x4A );
+      fb_scores[ 0 ] = (int)(sn_gmspec & 0x0fu);
+      fb_scores[ 1 ] = (int)((sn_gmspec & 0xf0u) >> 4);
+
+      sn_pocketed = 0xFDF2u;
+   }
+
    // Check this every read
    // Its basically 'turn start' event
    if( sn_permit )
    {
-      bool isOurTurn = (local_playerid >= 0) && (local_teamid == sn_turnid);
+      bool isOurTurn = ((local_playerid >= 0) && (local_teamid == sn_turnid)) || gm_practice;
       
       // Check if teammate placed the positioner
       if( !sn_foul )
@@ -2893,13 +3904,17 @@ public void _netread()
          markerObj.SetActive( false );
       }
 
+      #if !HT_QUEST
       if( isOurTurn )
       {
          // Update for desktop
-         #if !HT_QUEST
-         _dk_AllowHit();
-         #endif
+         _dk_AllowHit();   
       }
+      else
+      {
+         _dk_DenyHit();
+      }
+      #endif
 
       if( gm_is_1 )
       {
@@ -2912,10 +3927,6 @@ public void _netread()
       #if !HT_QUEST
       _vis_rackballs();
       #endif
-
-      // Reset rotation since guideline is parented.
-      // TODO: maybe just translate guide manually??
-      balls_render[0].transform.localRotation = Quaternion.identity;
 
       if( sn_timer > 0 && !timer_running )
       {
