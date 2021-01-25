@@ -20,13 +20,11 @@ Check the scene `ht8b` for a full setup example
 
 Recommended steps:
 - Edit > Project Settings > Tags and Layers
-- Add a new layer to the list
+- Set User Layer 23 to: `ht8b`
 - Edit > Project Settings > Physics
 - In the collision matrix deselect all apart from itself for the new layer as so:
 
-![](https://i.imgur.com/eZpXQ65.png)
-
-- Finally, in the prefab, you should set all `ball00-ball15` to this layer, as well as `table_col` object
+![](https://i.imgur.com/jhku3V2.png)
 
 ### Quest / PC Toggles
 The project includes some small scripts to change / toggle stuff between quest/pc versions
