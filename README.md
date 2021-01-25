@@ -4,6 +4,8 @@ Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318c
 ![](https://i.imgur.com/3cHrbf1.jpg)
 
 ## For World Creators
+Follow the Collisions layers steps first before importing package!
+
 This project can be downloaded from [The releases page](https://github.com/Terri00/vrc8ball/releases)
 
 ### Dependencies / Setup
