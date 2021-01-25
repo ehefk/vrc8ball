@@ -24,6 +24,8 @@ public class ht8b_cue : UdonSharpBehaviour
    [SerializeField]
    public GameObject objTip;
 
+   [SerializeField] GameObject ui_pressE;
+
    // Pickuip components
    private VRC_Pickup pickup_this;
    private VRC_Pickup pickup_target;
@@ -34,26 +36,9 @@ public class ht8b_cue : UdonSharpBehaviour
 
    // Make desktop mode a bit easier
    public bool useDesktop = false;
-   float dkRotation = -1.5408f;     // start at 90 degrees
-   float dkRotSpeed = 0.0f;
-   public Vector3 dkTarget = Vector3.zero;
-   bool dkSnapAim = false;
-   bool dkShoot = false;
-   float dkShotDist;
-   float dkShotSpeed = 0.0f;
-   public bool dkSimLock = true;
-   bool dkPickupLock = false;          // Waiting for user to stop clicking
+
+
    public bool dkPrimaryControl = true;
-
-   const float k_dkShotMax = 1.5f;        // Maximum power
-   const float k_dkShotReset = 0.885f;    // Normal pos
-   const float k_dkShotTrigger = 0.85f;   // Reset point
-
-   const float k_dkAimSpeed = 0.0f;
-   const float k_dkNormalSpeed = 4.0f;
-   const float k_dkStrafeSpeed = 2.0f;
-   const float k_dkMaxRot = 10.0f;
-   const float k_dkFineAimSpeed = 10.0f;
 
 #endif
 
@@ -73,6 +58,7 @@ public class ht8b_cue : UdonSharpBehaviour
 
    bool bArmed = false;
    bool bHolding = false;
+   bool bOtherLock = false;
 
    Vector3 reset_pos_this;
    Vector3 reset_pos_target;
@@ -125,10 +111,6 @@ public class ht8b_cue : UdonSharpBehaviour
       {
          objTarget.transform.localScale = Vector3.one;
       }
-      else
-      {
-         dkPickupLock = true;
-      }
 #else
       objTarget.transform.localScale = Vector3.one;
 #endif
@@ -155,13 +137,10 @@ public class ht8b_cue : UdonSharpBehaviour
       #if !HT_QUEST
       if( useDesktop )
       {
+         ui_pressE.SetActive( false );
          gameController._ht_desktop_cue_down();
       }
 
-      #if !UNITY_EDITOR
-      Networking.LocalPlayer.SetRunSpeed( k_dkNormalSpeed );
-      Networking.LocalPlayer.SetStrafeSpeed( k_dkStrafeSpeed );
-      #endif
       #endif
    }
 
@@ -170,12 +149,6 @@ public class ht8b_cue : UdonSharpBehaviour
       // Match lerped positions at start
       lag_objBase = this.transform.position;
       lag_objTarget = objTarget.transform.position;
-
-      #if !HT_QUEST
-
-      dkShotDist = k_dkShotReset;
-
-      #endif
 
       targetOriginalDelta = this.transform.InverseTransformPoint( objTarget.transform.position );
       OnDrop();
@@ -210,45 +183,60 @@ public class ht8b_cue : UdonSharpBehaviour
       pickup_target.Drop();
    }
 
+   public void _otherlock()
+   {
+      bOtherLock = true;
+   }
+
+   public void _otherunlock()
+   {
+      bOtherLock = false;
+   }
+
    void Update()
    {
-      lag_objBase = Vector3.Lerp( lag_objBase, this.transform.position, Time.deltaTime * 16.0f );
-      lag_objTarget = Vector3.Lerp( lag_objTarget, objTarget.transform.position, Time.deltaTime * 16.0f );
-
-      if( bArmed )
+      // Put cue in hand
+      #if !HT_QUEST
+      if( dkPrimaryControl )
       {
-         vSnOff = lag_objBase - vBase;
-         vSnDet = Vector3.Dot( vSnOff, vLineNorm );
-         objCue.transform.position = vBase + vLineNorm * vSnDet;
-      }
-      else
-      {        
          if( useDesktop && bHolding )
          {
-            // Put cue in hand
-            if( dkPrimaryControl )
-            {
-               objCue.transform.position = Networking.LocalPlayer.GetBonePosition( HumanBodyBones.RightHand );
-               this.transform.position = objCue.transform.position;
+            this.transform.position = Networking.LocalPlayer.GetBonePosition( HumanBodyBones.RightHand );
 
-               // Temporary target
-               objTarget.transform.position = objCue.transform.position + Vector3.up;
+            // Temporary target
+            objTarget.transform.position = this.transform.position + Vector3.up;
 
-               Quaternion fixrot = Quaternion.AngleAxis( 90.000f, Vector3.up );
-               objCue.transform.rotation = Networking.LocalPlayer.GetBoneRotation( HumanBodyBones.RightHand ) * fixrot;
-
-               Vector3 playerpos = gameController.gameObject.transform.InverseTransformPoint( Networking.LocalPlayer.GetPosition() );
+            Vector3 playerpos = gameController.gameObject.transform.InverseTransformPoint( Networking.LocalPlayer.GetPosition() );
                
-               // Check turn entry
-               if( (Mathf.Abs( playerpos.x ) < 2.0f) && (Mathf.Abs( playerpos.z ) < 1.5f) )
+            // Check turn entry
+            if( (Mathf.Abs( playerpos.x ) < 2.0f) && (Mathf.Abs( playerpos.z ) < 1.5f) )
+            {
+               VRCPlayerApi.TrackingData hmd = localplayer.GetTrackingData( VRCPlayerApi.TrackingDataType.Head );
+               ui_pressE.SetActive( true );
+               ui_pressE.transform.position = hmd.position + hmd.rotation * Vector3.forward;
+               if( Input.GetKeyDown( KeyCode.E ) )
                {
-                  if( Input.GetKeyDown( KeyCode.E ) )
-                  {
-                     dkPrimaryControl = false;
-                     gameController._ht_desktop_enter();
-                  }
+                  dkPrimaryControl = false;
+                  gameController._ht_desktop_enter();
                }
             }
+            else
+            {
+               ui_pressE.SetActive( false );
+            }
+         }
+
+         lag_objBase = Vector3.Lerp( lag_objBase, this.transform.position, Time.deltaTime * 16.0f );
+      #endif
+
+         if( !bOtherLock )
+            lag_objTarget = Vector3.Lerp( lag_objTarget, objTarget.transform.position, Time.deltaTime * 16.0f );
+
+         if( bArmed )
+         {
+            vSnOff = lag_objBase - vBase;
+            vSnDet = Vector3.Dot( vSnOff, vLineNorm );
+            objCue.transform.position = vBase + vLineNorm * vSnDet;
          }
          else
          {
@@ -256,7 +244,10 @@ public class ht8b_cue : UdonSharpBehaviour
             objCue.transform.position = lag_objBase;
             objCue.transform.LookAt( lag_objTarget );
          }
+
+      #if !HT_QUEST
       }
+      #endif
 
       if( bHolding )
       {
