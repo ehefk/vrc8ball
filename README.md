@@ -1,9 +1,7 @@
-# VRChat / Harry_T 8 Ball source mirror
+# VRChat 8 Ball source mirror
+Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
 
 ![](https://i.imgur.com/3cHrbf1.jpg)
-
-### Bugs / Feature requests
-Please feel free to submit anything to the issues page here
 
 ## For World Creators
 This project can be downloaded from [The releases page](https://github.com/Terri00/vrc8ball/releases)
@@ -16,7 +14,7 @@ This project can be downloaded from [The releases page](https://github.com/Terri
 #### Collision layers
 There are some objects that need to be set to only collide on a seperate layer.
 
-Check the scene `ht8b` for a full setup example
+Check the scene `ht8b_public` for a full setup example
 
 Recommended steps:
 - Edit > Project Settings > Tags and Layers
