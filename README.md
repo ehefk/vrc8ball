@@ -4,7 +4,7 @@ The Releases will remain up, but may have bugs. Please check out: https://github
 ### NOTE
 While the github license provided is Unlicense, this only applies to source code.
 
-Any art assets distributed with this project now or in the past, I declare to be 'CC Attribution-NonCommercial-NoDerivs' as opposed to being 'All Rights Reserved'
+Any art assets distributed with this project now or in the past, I declare to be 'CC Attribution-NonCommercial-NoDerivs' as opposed to falling under default copyright law 'All Rights Reserved'
 
 However, if you want to modify these assets I don't have a problem with it unless your project is deeply offensive.
 
