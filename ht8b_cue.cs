@@ -225,9 +225,9 @@ public class ht8b_cue : UdonSharpBehaviour
                ui_pressE.SetActive( false );
             }
          }
-
-         lag_objBase = Vector3.Lerp( lag_objBase, this.transform.position, Time.deltaTime * 16.0f );
+         
       #endif
+         lag_objBase = Vector3.Lerp( lag_objBase, this.transform.position, Time.deltaTime * 16.0f );
 
          if( !bOtherLock )
             lag_objTarget = Vector3.Lerp( lag_objTarget, objTarget.transform.position, Time.deltaTime * 16.0f );
