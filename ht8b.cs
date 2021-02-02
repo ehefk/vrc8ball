@@ -1,7 +1,6 @@
 /* 
- https://www.harrygodden.com
 
- live:   wrld_08badc69-7665-4dc5-8243-3867455dc17c
+ live:   wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
  dev:    wrld_9497c2da-97ee-4b2e-9f82-f9adb024b6fe
 
  Update log:
@@ -266,6 +265,7 @@ const string FRP_END =  "</color>";
 [SerializeField]        GameObject     m_base;
 [SerializeField]        GameObject     point4ball;
 [SerializeField]        GameObject[]   cueRenderObjs;
+[SerializeField]        GameObject     select4b;
 
 // Meshes
 [SerializeField]        Mesh[]         cueball_meshes;
@@ -303,6 +303,7 @@ const string FRP_END =  "</color>";
 [SerializeField]        AudioClip      snd_btn;
 [SerializeField]        AudioClip      snd_spin;
 [SerializeField]        AudioClip      snd_spinstop;
+[SerializeField]        AudioClip      snd_hitball;
 
 #endregion
 
@@ -416,6 +417,7 @@ bool  gm_is_1 = false;
 bool  gm_is_2 = false;
 //bool   gm_is_3 = false;
 bool  gm_practice = false;       // Game should run in practice mode
+bool  region_selected = false;
 
 bool  dk_shootui = false;
 
@@ -612,6 +614,7 @@ void _vis_disableobjects()
    tableoverlayUI.SetActive( false );
    marker9ball.SetActive( false );
    point4ball.SetActive( false );
+   select4b.SetActive( false );
 }
 
 void _vis_spawn_floaty( Vector3 pos, Mesh m )
@@ -1095,13 +1098,9 @@ void _apply_cue_access()
 // Some udon specific optimisations
 void _setup_gm_spec()
 {
-   gm_is_0 = false;
-   gm_is_1 = false;
-   gm_is_2 = false;
-   // gm_is_3 = false;
-   if( sn_gamemode == 0u ) gm_is_0 = true;
-   if( sn_gamemode == 1u ) gm_is_1 = true;
-   if( sn_gamemode == 2u ) gm_is_2 = true;
+   gm_is_0 = sn_gamemode == 0u;
+   gm_is_1 = sn_gamemode == 1u;
+   gm_is_2 = sn_gamemode == 2u;
 }
 
 void _onlocal_newgame()
@@ -1138,8 +1137,6 @@ void _onlocal_newgame()
 
    if( gm_is_2 ) // 4 ball specific
    {
-      fb_kr = true;
-      fb_jp = false;
       pocketblockers.SetActive( true );
       scoreCardRenderer.sharedMaterial.SetTexture( "_MainTex", scorecard4ball );
 
@@ -1289,9 +1286,9 @@ void _onlocal_pocketball( int id )
 
    balls_render[ id ].transform.position = new Vector3(
 
-      ball_co[ id ].x,
+      ball_CO[ id ].x,
       k_RACK_HEIGHT,
-      ball_co[ id ].y
+      ball_CO[ id ].y
    
    );
    #endif
@@ -2157,6 +2154,7 @@ void _turn_continue()
 [SerializeField]  GameObject     m_menuLoc_start;
 [SerializeField]  GameObject     m_newGameBtn;
 [SerializeField]  Text[]         m_lobbyNames;
+[SerializeField]  GameObject[]   rulePages;
 
             Vector3              m_menuLoc_sw;
             Vector3              m_menuLoc_swt;
@@ -2263,7 +2261,10 @@ void _htmenu_viewjoin()
                // Error: Local believes that we are in lobby, but someone else is there
                if( player.playerId != Networking.LocalPlayer.playerId )
                {
+                  #if HT8B_DEBUGGER
                   _frp( FRP_ERR + "Error: de-sync local lobby status" + FRP_END );
+                  #endif
+
                   local_playerid = -1;
                   m_lobbyNames[ i ].text = "<color=\"#ff0000\">ERROR</color>";
                }
@@ -2291,8 +2292,6 @@ void _htmenu_viewjoin()
    }
 
    gm_practice = local_playerid == 0 && playernum == 1;
-
-   _frp( "gm_practice: " + gm_practice.ToString() );
 
    // If in the game
    if( local_playerid >= 0 )
@@ -2426,7 +2425,9 @@ bool _buttonpressed( GameObject btn, int typeid )
 // Join lobby
 void _htjoinplayer( int id )
 {
+   #if HT8B_DEBUGGER
    _frp( FRP_YES + "_htjoinplayer: " + id + FRP_END );
+   #endif
 
    local_playerid = id;
    local_teamid = ((uint)id & 0x2u) >> 1;
@@ -2438,7 +2439,9 @@ void _htjoinplayer( int id )
 // Join team locally
 void _htjointeam( int id )
 {
+   #if HT8B_DEBUGGER
    _frp( FRP_LOW + "_htjointeam: " + id + FRP_END );
+   #endif
 
    // Leave routine
    if( local_playerid >= 0 )
@@ -2448,7 +2451,10 @@ void _htjointeam( int id )
       {
          if( id == 0 )
          {
+            #if HT8B_DEBUGGER
             _frp( FRP_ERR + "( closing lobby )" + FRP_END );
+            #endif
+
             sn_lobbyclosed = true;
             local_playerid = -1;
 
@@ -2458,7 +2464,11 @@ void _htjointeam( int id )
          }
          else
          {
+            #if HT8B_DEBUGGER
             _frp( FRP_YES + "Starting game!" + FRP_END );
+            #endif
+
+            region_selected = false;
             _tr_newgame();
             return;
          }
@@ -2467,8 +2477,10 @@ void _htjointeam( int id )
       {
          if( (int)local_teamid == id )
          {
+            #if HT8B_DEBUGGER
             _frp( FRP_WARN + "( leaving lobby )" + FRP_END );
-            
+            #endif
+
             // Set owner back to host
             Networking.SetOwner( Networking.GetOwner( m_playerslot_owners[ 0 ] ), m_playerslot_owners[ local_playerid ] );
 
@@ -2477,7 +2489,9 @@ void _htjointeam( int id )
          }
          else
          {
+            #if HT8B_DEBUGGER
             _frp( FRP_LOW + "this button does nothing" + FRP_END );
+            #endif
          }
       }
 
@@ -2488,7 +2502,9 @@ void _htjointeam( int id )
    // Create new lobby
    if( sn_lobbyclosed )
    {
+      #if HT8B_DEBUGGER
       _frp( FRP_YES + "Creating lobby" + FRP_END );
+      #endif
 
       // Assign other players to us to signify not joined
       Networking.SetOwner( Networking.LocalPlayer, m_playerslot_owners[ 1 ] );
@@ -2521,7 +2537,9 @@ void _htjointeam( int id )
       }
       else
       {
+         #if HT8B_DEBUGGER
          _frp( FRP_ERR + "no slot availible" + FRP_END );
+         #endif
       }
    } 
 
@@ -2532,7 +2550,9 @@ void _htjointeam( int id )
    }
    else
    {
+      #if HT8B_DEBUGGER
       _frp( FRP_ERR + "no slot availible" + FRP_END );
+      #endif
    }
 }
 
@@ -2648,9 +2668,16 @@ void _htmenu_trimin()
    }
 }
 
+VRC_Pickup.PickupHand _htmenu_hand = VRC_Pickup.PickupHand.None;
+
 void _htmenu_buttonpressed()
 {
    aud_main.PlayOneShot( snd_btn );
+
+   if( _htmenu_hand != VRC_Pickup.PickupHand.None )
+   {
+      Networking.LocalPlayer.PlayHapticEventInHand( _htmenu_hand, 0.02f, 1.0f, 1.0f );
+   }
 }
 
 void _htmenu_begin()
@@ -2725,6 +2752,7 @@ void _htmenu_update()
       // Localize m_cursor
       m_cursor = m_base.transform.InverseTransformPoint( m_cursor );
 
+      _htmenu_hand = VRC_Pickup.PickupHand.None;
       _htmenu_begin();
       _htmenu_trimin();
    }
@@ -2735,6 +2763,7 @@ void _htmenu_update()
       #endif
 
       _htmenu_begin(); 
+      _htmenu_hand = VRC_Pickup.PickupHand.Left;
 
       // VR use figer tips / hand positions
       m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.LeftIndexDistal ) );
@@ -2743,6 +2772,7 @@ void _htmenu_update()
       m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.LeftIndexProximal ) );
       _htmenu_trimin();
 
+      _htmenu_hand = VRC_Pickup.PickupHand.Right;
       m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.RightIndexDistal ) );
       _htmenu_trimin();
 
@@ -2814,6 +2844,7 @@ Vector3 dkHitCursor = new Vector3( 0.0f, 0.0f, 0.0f );
 [SerializeField] GameObject desktopQuad;
 [SerializeField] GameObject[] dkStickBases;
 [SerializeField] GameObject dkOverlayPwr;
+[SerializeField] GameObject dk_E;
 
 const float k_DesktopCursorSpeed = 0.035f;
 bool dkShootingIn = false;
@@ -2839,7 +2870,9 @@ public void _ht_desktop_enter()
    Networking.LocalPlayer.SetRunSpeed( 0.0f );
    Networking.LocalPlayer.SetStrafeSpeed( 0.0f );
 
+   #if HT8B_DEBUGGER
    _frp( FRP_LOW + "Entering desktop overlay" + FRP_END );
+   #endif
 }
 
 // Cue put down local
@@ -2897,6 +2930,7 @@ void _ht_desktopui_update()
    // Keep UI rendering
    VRCPlayerApi.TrackingData hmd = localplayer.GetTrackingData( VRCPlayerApi.TrackingDataType.Head );
    desktopQuad.transform.position = hmd.position + hmd.rotation * Vector3.forward;
+   dk_E.transform.position = desktopQuad.transform.position;
 
    dkCursor.x = Mathf.Clamp
    ( 
@@ -3067,6 +3101,8 @@ void _hit_general()
    _netread();
 
    sn_oursim = true;
+
+   AudioSource.PlayClipAtPoint( snd_hitball, cuetip.transform.position, 1.0f );
 }
 
 private void Update()
@@ -3440,6 +3476,27 @@ public void _setup_break()
 // Purpose: 
 //  Public methods which should are called from other behaviours
 
+// Player select 4 ball mode Japanese
+public void _tr_yotsudama()
+{
+   fb_jp = true;
+   fb_kr = false;
+   region_selected = true;
+   select4b.SetActive( false );
+
+   _tr_newgame();
+}
+
+public void _tr_sagu()
+{
+   fb_jp = false;
+   fb_kr = true;
+   region_selected = true;
+   select4b.SetActive( false );
+
+   _tr_newgame();
+}
+
 // Player is holding input trigger
 public void _tr_starthit()
 {
@@ -3501,13 +3558,6 @@ public void _tr_newgame()
 
       _onlocal_newgame();
 
-      // Overrides
-      //if( gm_is_2 )
-      //{
-      // sn_timer = 0u;
-      // sn_teams = false;
-      //}
-
       sn_turnid = 0;
       sn_turnid_prv = 0;
       _onlocal_turnchange();
@@ -3526,6 +3576,15 @@ public void _tr_newgame()
       repoMaxX = -k_SPOT_POSITION_X;
       markerObj.transform.localPosition = ball_CO[ 0 ];
       markerObj.SetActive( true );
+
+      if( !region_selected )
+      {
+         if( sn_gamemode == 2u )
+         {
+            select4b.SetActive( true );
+            return;
+         }
+      }
    }
    else
    {
@@ -3692,6 +3751,7 @@ public void _netpack( uint _turnid )
       // Encode player scores into gmspec
       sn_gmspec  = (ushort)(((uint)fb_scores[ 0 ]) & 0x0fu);
       sn_gmspec |= (ushort)((((uint)fb_scores[ 1 ]) & 0x0fu) << 4);
+      if( fb_kr ) sn_gmspec |= (ushort)0x100u;
 
       // 4 ball specifc ( no pocket info )
       _encode_u16( 0x4A, sn_gmspec );
@@ -3883,6 +3943,9 @@ public void _netread()
       sn_gmspec = _decode_u16( 0x4A );
       fb_scores[ 0 ] = (int)(sn_gmspec & 0x0fu);
       fb_scores[ 1 ] = (int)((sn_gmspec & 0xf0u) >> 4);
+
+      fb_kr = (sn_gmspec & 0x100u) == 0x100u;
+      fb_jp = !fb_kr;
 
       sn_pocketed = 0xFDF2u;
    }

@@ -1,11 +1,21 @@
-# VRChat / Harry_T 8 Ball source mirror
+## I no longer maintain this project
+The Releases will remain up, but may have bugs. Please check out: https://github.com/Xiexe/VRCBilliards for an version being maintained.
+
+### NOTE
+While the github license provided is Unlicense, this only applies to source code.
+
+Any art assets distributed with this project now or in the past, I declare to be 'CC BY-NC-ND 3.0' as opposed to falling under default copyright law 'All Rights Reserved', as they did previously
+
+However, if you want to modify these assets I don't have a problem with it unless your project is deeply offensive.
+
+# VRChat 8 Ball source mirror
+Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
 
 ![](https://i.imgur.com/3cHrbf1.jpg)
 
-### Bugs / Feature requests
-Please feel free to submit anything to the issues page here
-
 ## For World Creators
+Follow the Collisions layers steps first before importing package!
+
 This project can be downloaded from [The releases page](https://github.com/Terri00/vrc8ball/releases)
 
 ### Dependencies / Setup
@@ -16,17 +26,15 @@ This project can be downloaded from [The releases page](https://github.com/Terri
 #### Collision layers
 There are some objects that need to be set to only collide on a seperate layer.
 
-Check the scene `ht8b` for a full setup example
+Check the scene `ht8b_public` for a full setup example
 
 Recommended steps:
 - Edit > Project Settings > Tags and Layers
-- Add a new layer to the list
+- Set User Layer 23 to: `ht8b`
 - Edit > Project Settings > Physics
 - In the collision matrix deselect all apart from itself for the new layer as so:
 
-![](https://i.imgur.com/eZpXQ65.png)
-
-- Finally, in the prefab, you should set all `ball00-ball15` to this layer, as well as `table_col` object
+![](https://i.imgur.com/jhku3V2.png)
 
 ### Quest / PC Toggles
 The project includes some small scripts to change / toggle stuff between quest/pc versions
