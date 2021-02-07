@@ -1,8 +1,3 @@
-### NOTE
-While the github license provided is Unlicense, the 3rd party art assets distributed with this project are licensed under 'CC BY-NC-ND 3.0'.
-
-If you want to modify these assets, contact me at hgodden00@gmail.com.
-
 # VRChat Harry's 8 Ball Pool source mirror
 Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
 
@@ -12,6 +7,11 @@ Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318c
 Follow the Collisions layers steps first before importing package!
 
 This project can be downloaded from [The releases page](https://github.com/Terri00/vrc8ball/releases)
+
+### NOTE
+While the github license provided is Unlicense, the 3rd party art assets distributed with this project are licensed under 'CC BY-NC-ND 3.0'.
+
+If you want to modify these assets, contact me at hgodden00@gmail.com.
 
 ### Dependencies / Setup
 - Install VRCSDK 3
