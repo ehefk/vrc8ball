@@ -1,12 +1,7 @@
-## I no longer maintain this project
-The Releases will remain up, but may have bugs. Please check out: https://github.com/Xiexe/VRCBilliards for an version being maintained.
-
 ### NOTE
-While the github license provided is Unlicense, this only applies to source code.
+While the github license provided is Unlicense, the 3rd party art assets distributed with this project are licensed under 'CC BY-NC-ND 3.0'.
 
-Any art assets distributed with this project now or in the past, I declare to be 'CC BY-NC-ND 3.0' as opposed to falling under default copyright law 'All Rights Reserved', as they did previously
-
-However, if you want to modify these assets I don't have a problem with it unless your project is deeply offensive.
+If you want to modify these assets, contact me at hgodden00@gmail.com.
 
 # VRChat 8 Ball source mirror
 Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
