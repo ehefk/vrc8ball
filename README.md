@@ -3,7 +3,7 @@ While the github license provided is Unlicense, the 3rd party art assets distrib
 
 If you want to modify these assets, contact me at hgodden00@gmail.com.
 
-# VRChat 8 Ball source mirror
+# VRChat Harry's 8 Ball Pool source mirror
 Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
 
 ![](https://i.imgur.com/3cHrbf1.jpg)
