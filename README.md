@@ -6,6 +6,7 @@ Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318c
 ### Features
 - Hand written, pool oriented physics engine based on real world values
 - CCD for cue ball
+- Deterministic Networking model and full late-joiner support
 - Automatically enforced game rules
 - Desktop / VR / Quest support
 - 1, 2, 3, or 4 players
