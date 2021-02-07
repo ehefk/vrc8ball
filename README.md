@@ -3,6 +3,23 @@ Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318c
 
 ![](https://i.imgur.com/3cHrbf1.jpg)
 
+### Features
+- Hand written, pool oriented physics engine based on real world values
+- CCD for cue ball
+- Automatically enforced game rules
+- Desktop / VR / Quest support
+- 1, 2, 3, or 4 players
+
+### Modes
+- 8 ball English/American mix Pool
+- 9 ball American standard Pool
+- 4 ball Japanese Yotsudama and Korean Sagu modes
+
+### Planned
+- Tournament mode
+- Visual events and information
+- Translations into 10 different languages
+
 ## For World Creators
 Follow the Collisions layers steps first before importing package!
 
