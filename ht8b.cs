@@ -1647,10 +1647,13 @@ void _phy_ball_step( int id )
       Vector3 nv = cv.normalized;
 
       // Angular slipping friction
-      //W += ((-5.0f * k_F_SLIDE * 9.8f)/(2.0f * 0.03f)) * k_FIXED_TIME_STEP * Vector3.Cross( Vector3.up, nv );
+      //W += ((-5.0f * k_F_SLIDE * k_GRAVITY)/(2.0f * 0.03f)) * k_FIXED_TIME_STEP * Vector3.Cross( Vector3.up, nv );
       // (baked):
       W += -2.04305208f * Vector3.Cross( Vector3.up, nv );
-      V += -k_F_SLIDE * k_GRAVITY * k_FIXED_TIME_STEP * nv;
+      
+      //V += -k_F_SLIDE * k_GRAVITY * k_FIXED_TIME_STEP * nv;
+      // (baked):
+      V += -0.024516625f * nv;
 
       ballsMoving = true;
    }
