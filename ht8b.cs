@@ -1,4 +1,5 @@
 /* 
+ https://www.harrygodden.com
 
  live:   wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
  dev:    wrld_9497c2da-97ee-4b2e-9f82-f9adb024b6fe
@@ -24,13 +25,13 @@
                0.3.8a   -  Switched network string to base64 encoded
                         -  Changed initial break setup
                1.0.0    -  First full Release
+               1.5.0    -  Physics rework to be more accurate (Marlow implementation)
+                        -  Menu remade to be more buttony
+               1.5.3    -  Physics patches, misc bug fixes
+               1.5.4    -  Winner ID being set incorrectly due to menu fixed
 
  Networking Model Information:
    
-   This implementation of 8 ball is based around passing ownership between clients who are
-   playing the game. A player is 'registered' into the game when they have ownership of one
-   of the two player 'totems'. In this implementation the totems are the pool cues themselves.
-
    When a turn ends, the player who is currently playing will pack information into the 
    networking string that the turn has been transferred, and once the remote client who is
    associated with the opposite cue recieves the update, they will take ownership of the main
@@ -99,14 +100,12 @@
    [ 0x50  ]   gameid               uint16
 
  Physics Implementation:
-   
-   Physics are done in 2D to save instructions. The implementation is designed to be
-   as numerically stable as possible (eg. using linear algebra as much as possible to
-   be explicit about what and where stuff collides ).
+
+   The implementation is designed to be numerically stable (eg. using linear algebra as 
+   much as possible to be explicit about what and where stuff collides ).
 
    Ball physic response is 100% pure elastic energy transfer, which even at one iteration
-   per physics update seems to give plausable enough results. balls can behave like a 
-   newtons cradle which is what we want.
+   per physics update seems to give plausable enough results.
 
    Edge collisions are a little contrived and the reason why the table can ONLY be placed
    at world orign. the table is divided into major and minor sections. some of the 
@@ -123,8 +122,9 @@
    Physics are calculated on a fixed timestep, using accumulator model. If there is very
    low framerate physics may run at a slower timescale if it passes the threshold where
    maximum updates/frame is reached, but won't affect eventual outcome.
-   
-   The display balls have their position matched, and rotated based on pure rolling model.
+
+   Limited CCD is used on the cueball only, I do not know how to implement a variable timestep
+   to account for every ball, especially on slow execution time (udon)
 */
 
 // https://feedback.vrchat.com/feature-requests/p/udon-expose-shaderpropertytoid
@@ -175,8 +175,9 @@ const float k_BALL_1OR        = 33.3333333333f;       // 1 over ball radius
 const float k_BALL_RSQR       = 0.0009f;              // ball radius squared
 const float k_BALL_DSQR       = 0.0036f;              // ball diameter squared
 const float k_BALL_DSQRPE     = 0.003598f;            // ball diameter squared plus epsilon
-const float k_POCKET_RADIUS   = 0.09f;                // Full diameter of pockets (exc ball radi)
+const float k_POCKET_RADIUS   = 0.06f;                // Full diameter of pockets (exc ball radi)
 const float k_CUSHION_RSTT    = 0.79f;                // Coefficient of restituion against cushion
+const float k_PI_2            = 1.57079632679f;       // Pi over 2
 
 const float k_1OR2            = 0.70710678118f;       // 1 over root 2 (normalize +-1,+-1 vector)
 const float k_1OR5            = 0.4472135955f;        // 1 over root 5 (normalize +-1,+-2 vector)
@@ -184,8 +185,6 @@ const float k_RANDOMIZE_F     = 0.0001f;
 
 const float k_POCKET_DEPTH    = 0.04f;                // How far back (roughly) do pockets absorb balls after this point
 const float k_MIN_VELOCITY    = 0.00005625f;          // SQUARED
-
-const float k_FRICTION_EFF    = 0.99f;                // How much to multiply velocity by each update
 
 const float k_F_SLIDE         = 0.2f;                 // Friction coefficient of sliding
 const float k_F_ROLL          = 0.01f;                // Friction coefficient of rolling
@@ -424,6 +423,8 @@ bool  dk_shootui = false;
 // Values that will get sucked in from the menu
 [HideInInspector] public int local_playerid = -1;
                         uint local_teamid = 0u;    // Interpreted value
+
+VRCPlayerApi[] start_saved_players = new VRCPlayerApi[ 2 ];
 
 #endregion
 
@@ -740,13 +741,24 @@ void _onlocal_tableclosed()
 // End of the game. Both with/loss
 void _onlocal_gameover()
 {
-#if HT8B_DEBUGGER
-   _frp( FRP_YES + "(local) Winner of match: " + Networking.GetOwner( playerTotems[ sn_winnerid ] ).displayName + FRP_END );
-#endif
-
    _vis_apply_tablecolour( sn_winnerid );
 
-   infText.text = Networking.GetOwner( playerTotems[ sn_winnerid ] ).displayName + " wins!";
+   _frp( FRP_WARN + sn_packetid + " >> local: " + local_playerid + " Winner: " + sn_winnerid + FRP_END );
+
+   if( start_saved_players[ sn_winnerid ] != null )
+   {
+#if HT8B_DEBUGGER
+      
+      _frp( FRP_YES + "(local) Winner of match: " + start_saved_players[ sn_winnerid ].displayName + FRP_END );
+   
+#endif
+      infText.text = start_saved_players[ sn_winnerid ].displayName + " wins!";
+   }
+   else
+   {
+      infText.text = "[Unknown player] wins!";
+   }
+
    infBaseTransform.SetActive( true );
    marker9ball.SetActive( false );
    tableoverlayUI.SetActive( false );
@@ -1108,6 +1120,10 @@ void _onlocal_newgame()
    #if HT8B_DEBUGGER
    _frp( FRP_LOW + "NewGameLocal()" + FRP_END );
    #endif
+
+   // Take a copy of player apis
+   start_saved_players[ 0 ] = Networking.GetOwner( playerTotems[ 0 ] );
+   start_saved_players[ 1 ] = Networking.GetOwner( playerTotems[ 1 ] );
 
    _setup_gm_spec();
 
@@ -1498,7 +1514,7 @@ void _phy_ball_table_std( int id )
    zy = Mathf.Sign( A.z );
 
    // within pocket regions
-   if( (A.z*zy > (k_TABLE_HEIGHT-k_POCKET_RADIUS)) && (A.x*zx > (k_TABLE_WIDTH-k_POCKET_RADIUS) || A.x*zx < k_POCKET_RADIUS) )
+   if( (A.z*zy > (k_TABLE_HEIGHT-k_POCKET_RADIUS)) && (A.x*zx > (k_TABLE_WIDTH-k_POCKET_RADIUS) || A.x*zx < k_POCKET_RADIUS + 0.016f) )
    {
       // Subregions
       zw = A.z * zy > A.x * zx - k_TABLE_WIDTH + k_TABLE_HEIGHT ? 1.0f : -1.0f;
@@ -1603,7 +1619,16 @@ void _phy_ball_step( int id )
 
       // Calculate rolling angular velocity
       W.x = -V.z * k_BALL_1OR;
-      W.y =  0.0f;
+
+      if( 0.3f > Mathf.Abs( W.y ) )
+      {
+         W.y = 0.0f;
+      }
+      else
+      {
+         W.y -= Mathf.Sign(W.y) * 0.3f;
+      }
+
       W.z =  V.x * k_BALL_1OR;
 
       // Stopping scenario
@@ -1625,7 +1650,7 @@ void _phy_ball_step( int id )
       //W += ((-5.0f * k_F_SLIDE * 9.8f)/(2.0f * 0.03f)) * k_FIXED_TIME_STEP * Vector3.Cross( Vector3.up, nv );
       // (baked):
       W += -2.04305208f * Vector3.Cross( Vector3.up, nv );
-      V += -k_F_SLIDE * 9.8f * k_FIXED_TIME_STEP * nv;
+      V += -k_F_SLIDE * k_GRAVITY * k_FIXED_TIME_STEP * nv;
 
       ballsMoving = true;
    }
@@ -2763,20 +2788,25 @@ void _htmenu_update()
       #endif
 
       _htmenu_begin(); 
+
+      // Left hand
       _htmenu_hand = VRC_Pickup.PickupHand.Left;
 
-      // VR use figer tips / hand positions
       m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.LeftIndexDistal ) );
       _htmenu_trimin();
 
-      m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.LeftIndexProximal ) );
+      VRCPlayerApi.TrackingData leftHand = localplayer.GetTrackingData( VRCPlayerApi.TrackingDataType.LeftHand );
+      m_cursor = m_base.transform.InverseTransformPoint( leftHand.position );
       _htmenu_trimin();
 
+      // Right hand
       _htmenu_hand = VRC_Pickup.PickupHand.Right;
+
       m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.RightIndexDistal ) );
       _htmenu_trimin();
 
-      m_cursor = m_base.transform.InverseTransformPoint( localplayer.GetBonePosition( HumanBodyBones.RightIndexProximal ) );
+      VRCPlayerApi.TrackingData rightHand = localplayer.GetTrackingData(VRCPlayerApi.TrackingDataType.RightHand);
+      m_cursor = m_base.transform.InverseTransformPoint( rightHand.position );
       _htmenu_trimin();
    }
 
@@ -2999,9 +3029,10 @@ void _ht_desktopui_update()
                // Fake hit ( kinda )
                float vel = Mathf.Pow( shootAmt * 2.0f, 1.4f )*9.0f;
             
-               ball_V[ 0 ] = dkShootVector * vel;
-
                Vector3 r_1 = (RaySphere_output - ball_CO[ 0 ]) * k_BALL_1OR;
+
+               ball_V[ 0 ] = dkShootVector * vel * Vector3.Dot( r_1, -dkShootVector );
+
                Vector3 p = dkShootVector.normalized * vel;
                ball_W[ 0 ] = Vector3.Cross( r_1, p ) * -25.0f;
 
@@ -3045,7 +3076,7 @@ void _ht_desktopui_update()
          dkHitCursor += Vector3.right * Time.deltaTime;
       }
 
-      // Clamp in circle
+      // Clamp in circlee
       if( dkHitCursor.magnitude > 0.90f )
       {
          dkHitCursor = dkHitCursor.normalized * 0.9f;
@@ -3215,11 +3246,12 @@ private void Update()
             // Compute velocity delta
             float vel = (horizontal_force.magnitude / Time.deltaTime) * 1.5f;
 
-            // Clamp velocity input to 20 m/s ( moderate break speed )
-            ball_V[ 0 ] = cue_shotdir * Mathf.Min( vel, 20.0f );
-
-            // Angular velocity: L=r(normalized)×p
             Vector3 r = (RaySphere_output - cueball_pos) * k_BALL_1OR;
+
+            // Clamp velocity input to 20 m/s ( moderate break speed )
+            ball_V[ 0 ] = cue_shotdir * Mathf.Min( vel, 20.0f ) * Vector3.Dot( r, -cue_shotdir );
+
+            // Angular velocity: L=r(normalized)×p 
             Vector3 p = cue_vdir * vel;
             ball_W[ 0 ] = Vector3.Cross( r, p ) * -50.0f;
 
@@ -3714,6 +3746,9 @@ public void _netpack_lossy()
    if( sn_teams ) flags |= 0x8000u;    // 15 - 1 bit
    if( sn_lobbyclosed ) flags |= 0x800u;
 
+   // 1.5.3: sn_winnerid was being discarded, keep value alive for winner text
+   flags |= sn_winnerid << 6;          // 6
+
    _encode_u16( 0x4C, (ushort)flags );
 
    sn_packetid = (ushort)(sn_packetid + 1u);
@@ -4084,7 +4119,7 @@ void _frp( string ln )
       FRP_LEN = FRP_MAX;
    }
 
-   string output = "ht8b 1.0.0aa ";
+   string output = "ht8b 1.5.4";
       
    // Add information about game state:
    output += Networking.IsOwner(Networking.LocalPlayer, this.gameObject) ? 
