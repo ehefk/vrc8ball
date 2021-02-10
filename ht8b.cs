@@ -743,7 +743,9 @@ void _onlocal_gameover()
 {
    _vis_apply_tablecolour( sn_winnerid );
 
+#if HT8B_DEBUGGER
    _frp( FRP_WARN + sn_packetid + " >> local: " + local_playerid + " Winner: " + sn_winnerid + FRP_END );
+#endif
 
    if( start_saved_players[ sn_winnerid ] != null )
    {
