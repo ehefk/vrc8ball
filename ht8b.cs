@@ -1,8 +1,7 @@
 /* 
  https://www.harrygodden.com
 
- live:   wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
- dev:    wrld_9497c2da-97ee-4b2e-9f82-f9adb024b6fe
+ HT8B v1.5.42
 
  Update log:
    16.12.2020 (0.1.3a)  -  Fix for new game, wrong local turn colour
@@ -29,6 +28,9 @@
                         -  Menu remade to be more buttony
                1.5.3    -  Physics patches, misc bug fixes
                1.5.4    -  Winner ID being set incorrectly due to menu fixed
+               1.5.41   -  Fix for quest fail to build (thanks MrDummyNL, Legoman99573)
+               1.5.42   -  Corrected cue colliding function for 4 ball mode
+                        -  Removed / cleaned unused preprocessor directives
 
  Networking Model Information:
    
@@ -125,24 +127,19 @@
 
    Limited CCD is used on the cueball only, I do not know how to implement a variable timestep
    to account for every ball, especially on slow execution time (udon)
+
+ live:   wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
+ dev:    wrld_9497c2da-97ee-4b2e-9f82-f9adb024b6fe
 */
 
 // https://feedback.vrchat.com/feature-requests/p/udon-expose-shaderpropertytoid
 // #define USE_INT_UNIFORMS
 
-// Currently unstable..
-// #define HT8B_ALLOW_AUTOSWITCH
-
 #if !UNITY_ANDROID
-#define HT8B_DEBUGGER
+ #define HT8B_DEBUGGER
 #else
-#define HT_QUEST
+ #define HT_QUEST
 #endif
-
-//#define COMPILE_FUNC_TESTS
-//#define MULTIGAMES_PORTAL
-//#define COMPILE_FUNC_TESTS
-#define MENU_DEV
 
 using UdonSharp;
 using UnityEngine;
@@ -332,17 +329,10 @@ bool  sn_lobbyclosed = true;
 [HideInInspector]
 public bool sn_permit= false;    // 19:7 (0x80)    Permission for player to play
 
-// Modifiable -- ht8b_menu.cs
 
-[HideInInspector] 
-
-#if COMPILE_FUNC_TESTS
-public
-#endif
-
-                           uint sn_gamemode  = 0;  // 19:8 (0x700)   Gamemode ID 3 bit { 0: 8 ball, 1: 9 ball, 2+: undefined }
-[HideInInspector] public   uint sn_timer     = 0;  // 19:13 (0x6000) Timer ID 2 bit    { 0: inf, 1: 30s, 2: 60s, 3: undefined }
-                           bool sn_teams = false;  // 19:15 (0x8000) Teams on/off (1 bit)
+uint  sn_gamemode  = 0;          // 19:8 (0x700)   Gamemode ID 3 bit { 0: 8 ball, 1: 9 ball, 2+: undefined }
+uint  sn_timer     = 0;          // 19:13 (0x6000) Timer ID 2 bit    { 0: inf, 1: 30s, 2: 60s, 3: undefined }
+bool  sn_teams = false;          // 19:15 (0x8000) Teams on/off (1 bit)
 
 ushort sn_packetid   = 0;        // 20:0 (0xffff)  Current packet number, used for locking updates so we dont accidently go back.
                                  //                   this behaviour was observed on some long connections so its necessary
@@ -430,14 +420,7 @@ VRCPlayerApi[] start_saved_players = new VRCPlayerApi[ 2 ];
 
 #region R_PHYS_MEM
 
-#if COMPILE_FUNC_TESTS
-public 
-#endif
 Vector3[] ball_CO = new Vector3[16];   // Current positions
-
-#if COMPILE_FUNC_TESTS
-public 
-#endif
 Vector3[] ball_V = new Vector3[16]; // Current velocities
 Vector3[] ball_W = new Vector3[16]; // Angular velocities
 
@@ -1327,8 +1310,7 @@ void _clamp_ball_vel_semi( int id, Vector2 surface )
 // Is cue touching another ball?
 bool _cue_contacting()
 {
-   // 8 ball, practice, portal
-   if( sn_gamemode != 1u )
+   if( gm_is_0 ) // 8 ball
    {
       // Check all
       for( int i = 1; i < 16; i ++ )
@@ -1339,7 +1321,7 @@ bool _cue_contacting()
          }
       }
    }
-   else // 9 ball
+   else if( gm_is_1 ) // 9
    {
       // Only check to 9 ball
       for( int i = 1; i <= 9; i ++ )
@@ -1348,6 +1330,21 @@ bool _cue_contacting()
          {
             return true;
          }
+      }
+   }
+   else // 4
+   {
+      if( (ball_CO[ 0 ] - ball_CO[ 9 ]).sqrMagnitude < k_BALL_DSQR )
+      {
+         return true;
+      }
+      if( (ball_CO[ 0 ] - ball_CO[ 2 ]).sqrMagnitude < k_BALL_DSQR )
+      {
+         return true;
+      }
+      if( (ball_CO[ 0 ] - ball_CO[ 3 ]).sqrMagnitude < k_BALL_DSQR )
+      {
+         return true;
       }
    }
 
@@ -1834,11 +1831,7 @@ bool _phy_predict_cueball()
 // Run one physics iteration for all balls
 void _phys_step()
 {
-#if !COMPILE_FUNC_TESTS
    ballsMoving = false;
-#else
-   ballsMoving = true;
-#endif
 
    uint ball_bit = 0x1u;
 
@@ -2190,12 +2183,6 @@ void _turn_continue()
             Vector3              m_menuLoc_swt;
 
 VRCPlayerApi localplayer;
-
-#if MENU_DEV
-
-[SerializeField]  GameObject  m_devcursor;
-
-#endif
 
 Vector3 _plane_line_intersect( Vector3 n, float d, Vector3 a, Vector3 b )
 {
@@ -2775,10 +2762,6 @@ void _htmenu_update()
       VRCPlayerApi.TrackingData hmd = localplayer.GetTrackingData( VRCPlayerApi.TrackingDataType.Head );
       m_cursor = _plane_line_intersect( m_planenormal, m_planedist, hmd.position, hmd.position + (hmd.rotation * Vector3.forward) );
 
-      #if MENU_DEV
-      m_devcursor.transform.position = m_cursor;
-      #endif
-
       // Localize m_cursor
       m_cursor = m_base.transform.InverseTransformPoint( m_cursor );
 
@@ -2788,10 +2771,6 @@ void _htmenu_update()
    }
    else
    {
-      #if MENU_DEV
-      m_devcursor.transform.position = localplayer.GetBonePosition( HumanBodyBones.RightIndexDistal );
-      #endif
-
       _htmenu_begin(); 
 
       // Left hand
@@ -3405,10 +3384,6 @@ private void Start()
 
    #if HT8B_DEBUGGER
    _frp( FRP_LOW + "Starting" + FRP_END );
-   #endif
-
-   #if COMPILE_FUNC_TESTS
-   _setup_break();
    #endif
    
    guidelineMat.SetMatrix( "_BaseTransform", this.transform.worldToLocalMatrix );
