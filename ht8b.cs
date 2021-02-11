@@ -31,6 +31,7 @@
                1.5.41   -  Fix for quest fail to build (thanks MrDummyNL, Legoman99573)
                1.5.42   -  Corrected cue colliding function for 4 ball mode
                         -  Removed / cleaned unused preprocessor directives
+                        -  Fixed buttons that are disabled from being processed
 
  Networking Model Information:
    
@@ -2381,6 +2382,12 @@ bool _buttonpressed( GameObject btn, int typeid )
    m_auto_id ++;
    m_auto_btnobjs[ m_auto_id ] = btn;
 
+   // Dont process buttons that are disabled
+   if( !btn.activeSelf )
+   {
+      return false;
+   }
+
    Vector3 delta; Vector3 tmp_pos;
    delta = btn.transform.localPosition - m_cursor;
 
@@ -4099,7 +4106,7 @@ void _frp( string ln )
       FRP_LEN = FRP_MAX;
    }
 
-   string output = "ht8b 1.5.4";
+   string output = "ht8b 1.5.42";
       
    // Add information about game state:
    output += Networking.IsOwner(Networking.LocalPlayer, this.gameObject) ? 
