@@ -32,6 +32,7 @@
                1.5.42   -  Corrected cue colliding function for 4 ball mode
                         -  Removed / cleaned unused preprocessor directives
                         -  Fixed buttons that are disabled from being processed
+                        -  Fix for timer being incorrectly labelled
 
  Networking Model Information:
    
@@ -332,7 +333,7 @@ public bool sn_permit= false;    // 19:7 (0x80)    Permission for player to play
 
 
 uint  sn_gamemode  = 0;          // 19:8 (0x700)   Gamemode ID 3 bit { 0: 8 ball, 1: 9 ball, 2+: undefined }
-uint  sn_timer     = 0;          // 19:13 (0x6000) Timer ID 2 bit    { 0: inf, 1: 30s, 2: 60s, 3: undefined }
+uint  sn_timer     = 0;          // 19:13 (0x6000) Timer ID 2 bit    { 0: inf, 1: 60s, 2: 30s, 3: undefined }
 bool  sn_teams = false;          // 19:15 (0x8000) Teams on/off (1 bit)
 
 ushort sn_packetid   = 0;        // 20:0 (0xffff)  Current packet number, used for locking updates so we dont accidently go back.
@@ -659,7 +660,7 @@ void _vis_floaty_eval()
 
 void _timer_reset()
 {
-   if( sn_timer == 1 )  // 30s
+   if( sn_timer == 2 )  // 30s
    {
       timer_end = Time.timeSinceLevelLoad + 30.0f;
       timer_recip = 0.03333333333f;
