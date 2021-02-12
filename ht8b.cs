@@ -33,7 +33,6 @@
                         -  Removed / cleaned unused preprocessor directives
                         -  Fixed buttons that are disabled from being processed
                         -  Fix for timer being incorrectly labelled
-                        -  Reset sn_packet ID every new game to allow for longer sessions
                         -  Static resolution
                         -  Unlicense everything
 
@@ -3854,26 +3853,17 @@ public void _netread()
 
    // Throw out updates that are possible errournous
    ushort nextid = _decode_u16( 0x4E );
-   ushort nextgame = _decode_u16( 0x50 );
    
    // Reset packetid if a new game has started
-   if( nextgame > sn_gameid )
+   if( nextid <= sn_packetid )
    {
-      sn_packetid = 0;
-   }
-   else
-   {
-      if( nextid <= sn_packetid )
-      {
-         #if HT8B_DEBUGGER
-         _frp( FRP_WARN + "Packet ID was old ( " + nextid + " <= " + sn_packetid + " )" + FRP_END );
-         #endif
+      #if HT8B_DEBUGGER
+      _frp( FRP_WARN + "Packet ID was old ( " + nextid + " <= " + sn_packetid + " )" + FRP_END );
+      #endif
 
-         return;
-      }
-
-      sn_packetid = nextid;
+      return;
    }
+   sn_packetid = nextid;
 
    // MAIN DECODE ===================================================================================================
    _sn_cpyprev();
@@ -3909,7 +3899,7 @@ public void _netread()
    sn_timer = (gamestate & 0x6000u) >>  13;        // 2 bits
    sn_teams = (gamestate & 0x8000u) == 0x8000u;    //
 
-   sn_gameid = nextgame;
+   sn_gameid = _decode_u16( 0x50 );
 
    // Events ==========================================================================================================
 
