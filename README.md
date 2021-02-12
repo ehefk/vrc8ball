@@ -26,11 +26,6 @@ Follow the Collisions layers steps first before importing package!
 
 This project can be downloaded from [The releases page](https://github.com/Terri00/vrc8ball/releases)
 
-### NOTE
-While the github license provided is Unlicense, the 3rd party art assets distributed with this project are licensed under 'CC BY-NC-ND 3.0'.
-
-If you want to modify these assets, contact me at hgodden00@gmail.com. (due to ND policy)
-
 ### Dependencies / Setup
 - Install VRCSDK 3
 - Install [Udon Sharp](https://github.com/MerlinVR/UdonSharp)
