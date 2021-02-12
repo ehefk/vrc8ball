@@ -1,4 +1,4 @@
-# VRChat Harry's 8 Ball Pool source mirror
+# VRChat 8 Ball Pool source mirror
 Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
 
 ![](https://i.imgur.com/3cHrbf1.jpg)
