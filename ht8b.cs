@@ -34,6 +34,8 @@
                         -  Fixed buttons that are disabled from being processed
                         -  Fix for timer being incorrectly labelled
                         -  Reset sn_packet ID every new game to allow for longer sessions
+                        -  Static resolution
+                        -  Unlicense everything
 
  Networking Model Information:
    
@@ -1679,14 +1681,18 @@ void _phy_ball_step( int id )
 
       if( dist < k_BALL_DIAMETRE )
       {
-         // Physics shit
-
          Vector3 normal = delta / dist;
+
+         // static resolution
+         Vector3 res = (k_BALL_DIAMETRE - dist) * normal;
+         ball_CO[ i ] += res;
+         ball_CO[ id ] -= res;
 
          Vector3 velocityDelta = ball_V[ id ] - ball_V[ i ];
 
          float dot = Vector3.Dot( velocityDelta, normal );
 
+         // Dynamic resolution (Cr is assumed to be (1)+1.0)
          if( dot > 0.0f ) 
          {
             Vector3 reflection = normal * dot;
