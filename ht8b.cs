@@ -35,6 +35,7 @@
                         -  Fix for timer being incorrectly labelled
                         -  Static resolution
                         -  Unlicense everything
+                        -  Rename _frp to _log and similar
 
  Networking Model Information:
    
@@ -232,11 +233,11 @@ Color k_fabricColour_green = new Color( 0.15f, 0.75f, 0.3f, 1.0f );
 Color k_aimColour_aim      = new Color( 0.7f, 0.7f, 0.7f, 1.0f );
 Color k_aimColour_locked   = new Color( 1.0f, 1.0f, 1.0f, 1.0f );
 
-const string FRP_LOW =  "<color=\"#ADADAD\">";
-const string FRP_ERR =  "<color=\"#B84139\">";
-const string FRP_WARN = "<color=\"#DEC521\">";
-const string FRP_YES =  "<color=\"#69D128\">";
-const string FRP_END =  "</color>";
+const string LOG_LOW =  "<color=\"#ADADAD\">";
+const string LOG_ERR =  "<color=\"#B84139\">";
+const string LOG_WARN = "<color=\"#DEC521\">";
+const string LOG_YES =  "<color=\"#69D128\">";
+const string LOG_END =  "</color>";
 
 #endregion
 
@@ -714,8 +715,8 @@ void _onlocal_tableclosed()
    uint picker = sn_turnid ^ sn_playerxor;
 
 #if HT8B_DEBUGGER
-   _frp( FRP_YES + "(local) " + Networking.GetOwner( playerTotems[ sn_turnid ] ).displayName + ":" + sn_turnid + " is " + 
-      (picker == 0? "blues": "oranges") + FRP_END );
+   _log( LOG_YES + "(local) " + Networking.GetOwner( playerTotems[ sn_turnid ] ).displayName + ":" + sn_turnid + " is " + 
+      (picker == 0? "blues": "oranges") + LOG_END );
 #endif
 
    _vis_apply_tablecolour( sn_turnid );
@@ -731,14 +732,14 @@ void _onlocal_gameover()
    _vis_apply_tablecolour( sn_winnerid );
 
 #if HT8B_DEBUGGER
-   _frp( FRP_WARN + sn_packetid + " >> local: " + local_playerid + " Winner: " + sn_winnerid + FRP_END );
+   _log( LOG_WARN + sn_packetid + " >> local: " + local_playerid + " Winner: " + sn_winnerid + LOG_END );
 #endif
 
    if( start_saved_players[ sn_winnerid ] != null )
    {
 #if HT8B_DEBUGGER
       
-      _frp( FRP_YES + "(local) Winner of match: " + start_saved_players[ sn_winnerid ].displayName + FRP_END );
+      _log( LOG_YES + "(local) Winner of match: " + start_saved_players[ sn_winnerid ].displayName + LOG_END );
    
 #endif
       infText.text = start_saved_players[ sn_winnerid ].displayName + " wins!";
@@ -887,7 +888,7 @@ void _onlocal_sim_end()
    sn_simulating = false;
 
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "(local) SimEnd()" + FRP_END );
+   _log( LOG_LOW + "(local) SimEnd()" + LOG_END );
    #endif
 
    // Make sure we only run this from the client who initiated the move
@@ -900,7 +901,7 @@ void _onlocal_sim_end()
 
       // Owner state checks
       #if HT8B_DEBUGGER
-      _frp( FRP_LOW + "Post-move state checking" + FRP_END );
+      _log( LOG_LOW + "Post-move state checking" + LOG_END );
       #endif
 
       uint bmask = 0xFFFCu;
@@ -1033,7 +1034,7 @@ void _onlocal_sim_end()
    if( sn_updatelock )
    {
       #if HT8B_DEBUGGER
-      _frp( FRP_LOW + "Update was waiting, executing now" + FRP_END );
+      _log( LOG_LOW + "Update was waiting, executing now" + LOG_END );
       #endif
 
       sn_updatelock = false;
@@ -1047,7 +1048,7 @@ void _onlocal_timer_end()
    timer_running = false;
    
    #if HT8B_DEBUGGER
-   _frp( FRP_ERR + "Out of time!!" + FRP_END );
+   _log( LOG_ERR + "Out of time!!" + LOG_END );
    #endif
 
    // We are holding the stick so propogate the change
@@ -1107,7 +1108,7 @@ void _setup_gm_spec()
 void _onlocal_newgame()
 {
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "NewGameLocal()" + FRP_END );
+   _log( LOG_LOW + "NewGameLocal()" + LOG_END );
    #endif
 
    // Take a copy of player apis
@@ -1299,18 +1300,6 @@ void _onlocal_pocketball( int id )
    #endif
 }
 
-// Makes sure that velocity is not opposing surface normal
-/*
-void _clamp_ball_vel_semi( int id, Vector2 surface )
-{
-   // TODO: improve this method to be a bit more accurate
-   if( Vector2.Dot( ball_V[ id ], surface ) < 0.0f )
-   {
-      ball_V[ id ] = ball_V[ id ].magnitude * surface;
-   }
-}
-*/
-
 // Is cue touching another ball?
 bool _cue_contacting()
 {
@@ -1404,13 +1393,13 @@ void _phy_bounce_cushion( int id, Vector3 N )
    //   Sᵧ = 0
    //   Sᵤ = -vᵤ - ωᵧ∙cosθ + ωₓ∙cosθ
    //   
-   //   k = (5∙Sᵤ) / ( 2∙mRA ); 
+   //   k = (5∙Sᵤ) / ( 2∙mRA )
    //   c = vₓ∙cosθ - vᵧ∙cosθ
    //
    // Angular delta:
    //   ωₓ = k∙sinθ
    //   ωᵧ = k∙cosθ
-   //   ωᵤ = (5/(2m))∙(-Sₓ / A + ((sinθ∙c∙(e+1)) / B)∙(cosθ - sinθ));
+   //   ωᵤ = (5/(2m))∙(-Sₓ / A + ((sinθ∙c∙(e+1)) / B)∙(cosθ - sinθ))
    //
    // These expressions are in the reference frame of the cushion, so V and ω inputs need to be rotated
 
@@ -2019,7 +2008,7 @@ int _lowest_ball( uint field )
 void _turn_win( uint winner )
 {
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + " -> GAMEOVER" + FRP_END );
+   _log( LOG_LOW + " -> GAMEOVER" + LOG_END );
    #endif
 
    sn_gameover = true;
@@ -2034,7 +2023,7 @@ void _turn_win( uint winner )
 void _turn_pass()
 {
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + " -> PASS" + FRP_END );
+   _log( LOG_LOW + " -> PASS" + LOG_END );
    #endif
 
    sn_permit = true;
@@ -2046,7 +2035,7 @@ void _turn_pass()
 void _turn_foul()
 {
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + " -> FOUL" + FRP_END );
+   _log( LOG_LOW + " -> FOUL" + LOG_END );
    #endif
 
    sn_foul = true;
@@ -2059,7 +2048,7 @@ void _turn_foul()
 void _turn_continue()
 {
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + " -> COTNINUE" + FRP_END );
+   _log( LOG_LOW + " -> COTNINUE" + LOG_END );
    #endif
 
    // Close table if it was open ( 8 ball specific )
@@ -2287,7 +2276,7 @@ void _htmenu_viewjoin()
                if( player.playerId != Networking.LocalPlayer.playerId )
                {
                   #if HT8B_DEBUGGER
-                  _frp( FRP_ERR + "Error: de-sync local lobby status" + FRP_END );
+                  _log( LOG_ERR + "Error: de-sync local lobby status" + LOG_END );
                   #endif
 
                   local_playerid = -1;
@@ -2457,7 +2446,7 @@ bool _buttonpressed( GameObject btn, int typeid )
 void _htjoinplayer( int id )
 {
    #if HT8B_DEBUGGER
-   _frp( FRP_YES + "_htjoinplayer: " + id + FRP_END );
+   _log( LOG_YES + "_htjoinplayer: " + id + LOG_END );
    #endif
 
    local_playerid = id;
@@ -2471,7 +2460,7 @@ void _htjoinplayer( int id )
 void _htjointeam( int id )
 {
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "_htjointeam: " + id + FRP_END );
+   _log( LOG_LOW + "_htjointeam: " + id + LOG_END );
    #endif
 
    // Leave routine
@@ -2483,7 +2472,7 @@ void _htjointeam( int id )
          if( id == 0 )
          {
             #if HT8B_DEBUGGER
-            _frp( FRP_ERR + "( closing lobby )" + FRP_END );
+            _log( LOG_ERR + "( closing lobby )" + LOG_END );
             #endif
 
             sn_lobbyclosed = true;
@@ -2496,7 +2485,7 @@ void _htjointeam( int id )
          else
          {
             #if HT8B_DEBUGGER
-            _frp( FRP_YES + "Starting game!" + FRP_END );
+            _log( LOG_YES + "Starting game!" + LOG_END );
             #endif
 
             region_selected = false;
@@ -2509,7 +2498,7 @@ void _htjointeam( int id )
          if( (int)local_teamid == id )
          {
             #if HT8B_DEBUGGER
-            _frp( FRP_WARN + "( leaving lobby )" + FRP_END );
+            _log( LOG_WARN + "( leaving lobby )" + LOG_END );
             #endif
 
             // Set owner back to host
@@ -2521,7 +2510,7 @@ void _htjointeam( int id )
          else
          {
             #if HT8B_DEBUGGER
-            _frp( FRP_LOW + "this button does nothing" + FRP_END );
+            _log( LOG_LOW + "this button does nothing" + LOG_END );
             #endif
          }
       }
@@ -2534,7 +2523,7 @@ void _htjointeam( int id )
    if( sn_lobbyclosed )
    {
       #if HT8B_DEBUGGER
-      _frp( FRP_YES + "Creating lobby" + FRP_END );
+      _log( LOG_YES + "Creating lobby" + LOG_END );
       #endif
 
       // Assign other players to us to signify not joined
@@ -2569,7 +2558,7 @@ void _htjointeam( int id )
       else
       {
          #if HT8B_DEBUGGER
-         _frp( FRP_ERR + "no slot availible" + FRP_END );
+         _log( LOG_ERR + "no slot availible" + LOG_END );
          #endif
       }
    } 
@@ -2582,7 +2571,7 @@ void _htjointeam( int id )
    else
    {
       #if HT8B_DEBUGGER
-      _frp( FRP_ERR + "no slot availible" + FRP_END );
+      _log( LOG_ERR + "no slot availible" + LOG_END );
       #endif
    }
 }
@@ -2899,7 +2888,7 @@ public void _ht_desktop_enter()
    Networking.LocalPlayer.SetStrafeSpeed( 0.0f );
 
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "Entering desktop overlay" + FRP_END );
+   _log( LOG_LOW + "Entering desktop overlay" + LOG_END );
    #endif
 }
 
@@ -3035,7 +3024,7 @@ void _ht_desktopui_update()
                ball_W[ 0 ] = Vector3.Cross( r_1, p ) * -25.0f;
 
                #if HT8B_DEBUGGER
-               _frp( FRP_WARN + "Angular velocity: " + ball_W[ 0 ].ToString() + ". Velocity: " + ball_V[ 0 ].ToString() + FRP_END );
+               _log( LOG_WARN + "Angular velocity: " + ball_W[ 0 ].ToString() + ". Velocity: " + ball_V[ 0 ].ToString() + LOG_END );
                #endif
 
                cue.transform.localPosition = new Vector3( 2000.0f, 2000.0f, 2000.0f );
@@ -3116,7 +3105,7 @@ void _hit_general()
    sn_foul = false;  // In case did not drop foul marker
 
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "Commiting changes" + FRP_END );
+   _log( LOG_LOW + "Commiting changes" + LOG_END );
    #endif
 
    // Commit changes
@@ -3254,7 +3243,7 @@ private void Update()
             ball_W[ 0 ] = Vector3.Cross( r, p ) * -50.0f;
 
             #if HT8B_DEBUGGER
-            _frp( FRP_WARN + "Angular velocity: " + ball_W[ 0 ].ToString() + ". Velocity: " + ball_V[ 0 ].ToString() + FRP_END );
+            _log( LOG_WARN + "Angular velocity: " + ball_W[ 0 ].ToString() + ". Velocity: " + ball_V[ 0 ].ToString() + LOG_END );
             #endif
 
             _hit_general();
@@ -3397,7 +3386,7 @@ private void Start()
    _sn_cpyprev();
 
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "Starting" + FRP_END );
+   _log( LOG_LOW + "Starting" + LOG_END );
    #endif
    
    guidelineMat.SetMatrix( "_BaseTransform", this.transform.worldToLocalMatrix );
@@ -3417,7 +3406,7 @@ int[] break_rows_9ball = { 0, 1, 2, 1, 0 };
 public void _setup_break()
 {
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "SetupBreak()" + FRP_END );
+   _log( LOG_LOW + "SetupBreak()" + LOG_END );
    #endif
 
    sn_simulating = false;
@@ -3575,7 +3564,7 @@ public void _tr_newgame()
    if( sn_gameover )
    {
       #if HT8B_DEBUGGER
-      _frp( FRP_YES + "Starting new game" + FRP_END );
+      _log( LOG_YES + "Starting new game" + LOG_END );
       #endif
 
       // Get gamestate rolling
@@ -3616,7 +3605,7 @@ public void _tr_newgame()
    {
       // Should not be hit since v1.0.0
       #if HT8B_DEBUGGER
-      _frp( FRP_ERR + "game in progress" + FRP_END );
+      _log( LOG_ERR + "game in progress" + LOG_END );
       #endif
    }
 }
@@ -3634,7 +3623,7 @@ public void _tr_force_end()
       || sn_gameover )
    {
       #if HT8B_DEBUGGER
-      _frp( FRP_WARN + "Ending game early" + FRP_END );
+      _log( LOG_WARN + "Ending game early" + LOG_END );
       #endif
 
       sn_gameover = true;
@@ -3656,7 +3645,7 @@ public void _tr_force_end()
    {
       // TODO: Make this a panel
       #if HT8B_DEBUGGER
-      _frp( FRP_ERR + "Reset is availible to: " + Networking.GetOwner( playerTotems[0] ).displayName + " and " + Networking.GetOwner( playerTotems[1] ).displayName + FRP_END );
+      _log( LOG_ERR + "Reset is availible to: " + Networking.GetOwner( playerTotems[0] ).displayName + " and " + Networking.GetOwner( playerTotems[1] ).displayName + LOG_END );
       #endif
 
       infReset.text = "Only:\n" + Networking.GetOwner( playerTotems[0] ).displayName + " and " + Networking.GetOwner( playerTotems[1] ).displayName + "\ncan reset";
@@ -3726,7 +3715,7 @@ public void _netpack_lossy()
    if( !sn_gameover )
    {
       #if HT8B_DEBUGGER
-      _frp( FRP_ERR + "Critical error: gameover was false when trying to _netpack_lossy()" + FRP_END );
+      _log( LOG_ERR + "Critical error: gameover was false when trying to _netpack_lossy()" + LOG_END );
       #endif
       return;
    }
@@ -3758,7 +3747,7 @@ public void _netpack( uint _turnid )
    if( local_playerid < 0 )
    {
       #if HT8B_DEBUGGER
-      _frp( FRP_ERR + "Critical error: local_playerid was less than 0 when trying to NetPack()" + FRP_END );
+      _log( LOG_ERR + "Critical error: local_playerid was less than 0 when trying to NetPack()" + LOG_END );
       #endif
       return;
    }
@@ -3822,7 +3811,7 @@ public void _netpack( uint _turnid )
    netstr = Convert.ToBase64String( net_data, Base64FormattingOptions.None );
 
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "NetPack()" + FRP_END );
+   _log( LOG_LOW + "NetPack()" + LOG_END );
    #endif
 }
 
@@ -3832,14 +3821,14 @@ public void _netread()
 {
    // CHECK ERROR ===================================================================================================
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + "incoming base64: " + netstr + FRP_END );
+   _log( LOG_LOW + "incoming base64: " + netstr + LOG_END );
    #endif
 
    byte[] in_data = Convert.FromBase64String( netstr );
    if( in_data.Length < 0x52 ) {
          
       #if HT8B_DEBUGGER
-      _frp( FRP_WARN + "Sync string too short for decode, skipping\n" + FRP_END );
+      _log( LOG_WARN + "Sync string too short for decode, skipping\n" + LOG_END );
       #endif
 
       return; 
@@ -3848,7 +3837,7 @@ public void _netread()
    net_data = in_data;
 
    #if HT8B_DEBUGGER
-   _frp( FRP_LOW + _netstr_hex() + FRP_END );
+   _log( LOG_LOW + _netstr_hex() + LOG_END );
    #endif
 
    // Throw out updates that are possible errournous
@@ -3858,7 +3847,7 @@ public void _netread()
    if( nextid <= sn_packetid )
    {
       #if HT8B_DEBUGGER
-      _frp( FRP_WARN + "Packet ID was old ( " + nextid + " <= " + sn_packetid + " )" + FRP_END );
+      _log( LOG_WARN + "Packet ID was old ( " + nextid + " <= " + sn_packetid + " )" + LOG_END );
       #endif
 
       return;
@@ -3907,7 +3896,7 @@ public void _netread()
    {
       // EV: 1
       #if HT8B_DEBUGGER
-      _frp( FRP_YES + " .EV: 1 (sn_gameid > sn_gameid_prv) -> NewGame" + FRP_END );
+      _log( LOG_YES + " .EV: 1 (sn_gameid > sn_gameid_prv) -> NewGame" + LOG_END );
       #endif
 
       _onlocal_newgame();
@@ -3918,7 +3907,7 @@ public void _netread()
    {
       // EV: 2
       #if HT8B_DEBUGGER
-      _frp( FRP_YES + " .EV: 2 (sn_turnid != sn_turnid_prv) -> NewTurn" + FRP_END );
+      _log( LOG_YES + " .EV: 2 (sn_turnid != sn_turnid_prv) -> NewTurn" + LOG_END );
       #endif
 
       _onlocal_turnchange();
@@ -3929,7 +3918,7 @@ public void _netread()
    {
       // EV: 3
       #if HT8B_DEBUGGER
-      _frp( FRP_YES + " .EV: 3 (sn_open_prv && !sn_open) -> DisplaySet" + FRP_END );
+      _log( LOG_YES + " .EV: 3 (sn_open_prv && !sn_open) -> DisplaySet" + LOG_END );
       #endif
 
       _onlocal_tableclosed();
@@ -3940,7 +3929,7 @@ public void _netread()
    {
       // EV: 4
       #if HT8B_DEBUGGER
-      _frp( FRP_YES + " .EV: 4 (!sn_gameover_prv && sn_gamemover) -> Gameover" + FRP_END );
+      _log( LOG_YES + " .EV: 4 (!sn_gameover_prv && sn_gamemover) -> Gameover" + LOG_END );
       #endif
 
       _onlocal_gameover();
@@ -3990,7 +3979,7 @@ public void _netread()
       if( !sn_foul )
       {
          #if HT8B_DEBUGGER
-         _frp( FRP_YES + " .EV: 3 (!sn_foul && sn_foul_prv && sn_permit) -> Marker placed" + FRP_END );
+         _log( LOG_YES + " .EV: 3 (!sn_foul && sn_foul_prv && sn_permit) -> Marker placed" + LOG_END );
          #endif
 
          isReposition = false;
@@ -4064,7 +4053,7 @@ public override void OnDeserialization()
    if( !string.Equals( netstr, netstr_prv ) )
    {
       #if HT8B_DEBUGGER
-      _frp( FRP_LOW + "OnDeserialization() :: netstr update" + FRP_END );
+      _log( LOG_LOW + "OnDeserialization() :: netstr update" + LOG_END );
       #endif
 
       netstr_prv = netstr;
@@ -4074,7 +4063,7 @@ public override void OnDeserialization()
       if( sn_simulating )
       {
          #if HT8B_DEBUGGER
-         _frp( FRP_WARN + "local simulation is still running, the network update will occur after completion" + FRP_END );
+         _log( LOG_WARN + "local simulation is still running, the network update will occur after completion" + LOG_END );
          #endif
 
          sn_updatelock = true;
@@ -4091,27 +4080,27 @@ public override void OnDeserialization()
 
 #if !HT_QUEST
 
-const int FRP_MAX = 32;
-int FRP_LEN = 0;
-int FRP_PTR = 0;
-string[] FRP_LINES = new string[32];
+const int LOG_MAX = 32;
+int LOG_LEN = 0;
+int LOG_PTR = 0;
+string[] LOG_LINES = new string[32];
 
 // Print a line to the debugger
-void _frp( string ln )
+void _log( string ln )
 {
    Debug.Log( "[<color=\"#B5438F\">ht8b</color>] " + ln );
 
-   FRP_LINES[ FRP_PTR ++ ] = "[<color=\"#B5438F\">ht8b</color>] " + ln + "\n";
-   FRP_LEN ++ ;
+   LOG_LINES[ LOG_PTR ++ ] = "[<color=\"#B5438F\">ht8b</color>] " + ln + "\n";
+   LOG_LEN ++ ;
 
-   if( FRP_PTR >= FRP_MAX )
+   if( LOG_PTR >= LOG_MAX )
    {
-      FRP_PTR = 0;
+      LOG_PTR = 0;
    }
 
-   if( FRP_LEN > FRP_MAX )
+   if( LOG_LEN > LOG_MAX )
    {
-      FRP_LEN = FRP_MAX;
+      LOG_LEN = LOG_MAX;
    }
 
    string output = "ht8b 1.5.42";
@@ -4131,9 +4120,9 @@ void _frp( string ln )
    output += "\n---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n";
 
    // Update display 
-   for( int i = 0; i < FRP_LEN ; i ++ )
+   for( int i = 0; i < LOG_LEN ; i ++ )
    {
-      output += FRP_LINES[ (FRP_MAX + FRP_PTR - FRP_LEN + i) % FRP_MAX ];
+      output += LOG_LINES[ (LOG_MAX + LOG_PTR - LOG_LEN + i) % LOG_MAX ];
    }
 
    ltext.text = output;
