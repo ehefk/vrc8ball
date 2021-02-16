@@ -1,9 +1,10 @@
-﻿Shader "harry_t/TableSurface"
+Shader "harry_t/TableSurface"
 {
    Properties
    {
       [HDR] _EmissionColour ("Color", Color) = (1,1,1,1)
       _MainTex ("Albedo (RGB)", 2D) = "white" {}
+      _TimerMap( "Timer map", 2D ) = "white" {}
       _StuffTex ("Metalic/Smoothness/Emit (RGB)", 2D) = "white" {}
       _ClothColour ("Cloth Colour", Color) = (1,1,1,1)
    }
@@ -22,6 +23,7 @@
 
       sampler2D _MainTex;
       sampler2D _StuffTex;
+      sampler2D _TimerMap;
 
       struct Input
       {
@@ -40,10 +42,10 @@
 
       void surf (Input IN, inout SurfaceOutputStandard o)
       {
-         // Albedo comes from a texture tinted by color
          fixed4 c = tex2D (_MainTex, IN.uv_MainTex);
 
-         float xy_angle = (atan2( IN.modelPos.x, IN.modelPos.z ) + 3.4) * 0.14915494309;
+         float xy_angle = tex2D( _TimerMap, IN.modelPos.xz * 0.4 + 0.5 ) * 0.92 + 0.1;
+
          float angle_cl = clamp((xy_angle - _EmissionColour.a) * 40.0, 0, 1);
 
          fixed4 stuff = tex2D( _StuffTex, IN.uv_MainTex );
