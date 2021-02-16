@@ -1,7 +1,7 @@
 /* 
  https://www.harrygodden.com
 
- HT8B v1.5.42
+ HT8B v1.6.0
 
  Update log:
    16.12.2020 (0.1.3a)  -  Fix for new game, wrong local turn colour
@@ -36,6 +36,9 @@
                         -  Static resolution
                         -  Unlicense everything
                         -  Rename _frp to _log and similar
+               1.6.0    -  Edge colliders use veroni regions and minkowski difference
+                           to detect and apply collisions
+                        -  Removed atan2 usage in mobile shaders
 
  Networking Model Information:
    
@@ -4383,7 +4386,7 @@ void _log( string ln )
       LOG_LEN = LOG_MAX;
    }
 
-   string output = "ht8b 1.5.42";
+   string output = "ht8b 1.6.0";
       
    // Add information about game state:
    output += Networking.IsOwner(Networking.LocalPlayer, this.gameObject) ? 
