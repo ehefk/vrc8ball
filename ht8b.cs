@@ -39,6 +39,7 @@
                1.6.0    -  Edge colliders use veroni regions and minkowski difference
                            to detect and apply collisions
                         -  Removed atan2 usage in mobile shaders
+                        -  Upgraded pocket triggers to be circles
 
  Networking Model Information:
    
@@ -1350,25 +1351,6 @@ bool _cue_contacting()
    return false;
 }
 
-// Check pocket condition
-void _phy_ball_pockets( int id )
-{
-   float zz, zx;
-   Vector3 A;
-
-   A = ball_CO[ id ];
-
-   // Setup major regions
-   zx = Mathf.Sign( A.x );
-   zz = Mathf.Sign( A.z );
-
-   // Its in a pocket
-   if( A.z*zz > k_TABLE_HEIGHT + k_POCKET_DEPTH || A.z*zz > A.x*-zx + k_TABLE_WIDTH+k_TABLE_HEIGHT + k_POCKET_DEPTH )
-   {
-      _onlocal_pocketball( id );
-   }
-}
-
 const float k_SINA = 0.28078832987f;
 const float k_SINA2 = 0.07884208619f;
 const float k_COSA = 0.95976971915f;
@@ -1461,31 +1443,6 @@ void _phy_bounce_cushion( int id, Vector3 N )
    ball_W[ id ] += rb * W1;
 }
 
-// Pocketless table
-void _phy_ball_table_carom( int id )
-{
-   float zz, zx;
-   Vector3 A;
-
-   A = ball_CO[ id ];
-
-   // Setup major regions
-   zx = Mathf.Sign( A.x );
-   zz = Mathf.Sign( A.z );
-
-   if( A.x * zx > k_TABLE_WIDTH )
-   {
-      ball_CO[ id ].x = k_TABLE_WIDTH * zx;
-      _phy_bounce_cushion( id, Vector3.left * zx );
-   }
-
-   if( A.z * zz > k_TABLE_HEIGHT )
-   {
-      ball_CO[ id ].z = k_TABLE_HEIGHT * zz;
-      _phy_bounce_cushion( id, Vector3.back * zz );
-   }
-}
-
 Vector3 k_vA = new Vector3();
 Vector3 k_vB = new Vector3();
 Vector3 k_vC = new Vector3();
@@ -1519,6 +1476,11 @@ Vector3 k_vC_vZ_normal = new Vector3();
 
 Vector3 k_vA_vB_normal = new Vector3( 0.0f, 0.0f, -1.0f );
 Vector3 k_vC_vW_normal = new Vector3( -1.0f, 0.0f, 0.0f );
+
+Vector3 k_vE = new Vector3( 1.087f, 0.0f, 0.627f );
+Vector3 k_vF = new Vector3( 0.0f, 0.0f, 0.665f );
+
+const float k_INNER_RADIUS = 0.072f;
 
 Vector3 _sign_pos = new Vector3(0.0f,1.0f,0.0f);
 
@@ -1594,6 +1556,69 @@ void _phy_table_init()
   
    k_pS = k_vW;
    k_pS.x -= k_CUSHION_RADIUS;
+}
+
+// Check pocket condition
+void _phy_ball_pockets( int id )
+{
+   float zz, zx;
+   Vector3 A;
+
+   A = ball_CO[ id ];
+   
+   _sign_pos.x = Mathf.Sign( A.x );
+   _sign_pos.z = Mathf.Sign( A.z );
+
+   A = Vector3.Scale( A, _sign_pos );
+
+   if( Vector3.Distance( A, k_vE ) < k_INNER_RADIUS )
+   {
+      _onlocal_pocketball( id );
+      return;
+   }
+
+   if( Vector3.Distance( A, k_vF ) < k_INNER_RADIUS )
+   {
+      _onlocal_pocketball( id );
+      return;
+   }
+
+   if( A.z > k_vF.z )
+   {
+      _onlocal_pocketball( id );
+      return;
+   }
+
+   if( A.z > -A.x + k_vE.x + k_vE.z )
+   {
+      _onlocal_pocketball( id );
+      return;
+   }
+}
+
+// Pocketless table
+void _phy_ball_table_carom( int id )
+{
+   float zz, zx;
+   Vector3 A;
+
+   A = ball_CO[ id ];
+
+   // Setup major regions
+   zx = Mathf.Sign( A.x );
+   zz = Mathf.Sign( A.z );
+
+   if( A.x * zx > k_pR.x )
+   {
+      ball_CO[ id ].x = k_pR.x * zx;
+      _phy_bounce_cushion( id, Vector3.left * zx );
+   }
+
+   if( A.z * zz > k_pO.z )
+   {
+      ball_CO[ id ].z = k_pO.z * zz;
+      _phy_bounce_cushion( id, Vector3.back * zz );
+   }
 }
 
 void _phy_ball_table_std( int id )
