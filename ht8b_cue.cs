@@ -1,7 +1,7 @@
 #if !UNITY_ANDROID
- #define HT8B_DEBUGGER
+#define HT8B_DEBUGGER
 #else
- #define HT_QUEST
+#define HT_QUEST
 #endif
 
 using UdonSharp;
@@ -9,8 +9,8 @@ using UnityEngine;
 using VRC.SDKBase;
 using VRC.Udon;
 
-public class ht8b_cue : UdonSharpBehaviour{
-
+public class ht8b_cue : UdonSharpBehaviour
+{
 [SerializeField]
 public GameObject objTarget;
 public ht8b_otherhand objTargetController;
@@ -39,13 +39,14 @@ public bool useDesktop = false;
 
 
 public bool dkPrimaryControl = true;
+bool dkPrimaryControlLock = false;
 
 #endif
 
 // ( Experimental ) Allow player ownership autoswitching routine 
 public bool bAllowAutoSwitch = true;
 public int playerID = 0;
-
+   
 Vector3 lag_objTarget;
 Vector3 lag_objBase;
 
@@ -193,10 +194,22 @@ public void _otherunlock()
    bOtherLock = false;
 }
 
+public void _primarycontrol()
+{
+   dkPrimaryControl = true;
+   dkPrimaryControlLock = true;
+}
+
 void Update()
 {
    // Put cue in hand
    #if !HT_QUEST
+   if( dkPrimaryControlLock )
+   {
+      dkPrimaryControlLock = false;
+      return;
+   }
+
    if( dkPrimaryControl )
    {
       if( useDesktop && bHolding )
@@ -207,7 +220,7 @@ void Update()
          objTarget.transform.position = this.transform.position + Vector3.up;
 
          Vector3 playerpos = gameController.gameObject.transform.InverseTransformPoint( Networking.LocalPlayer.GetPosition() );
-            
+               
          // Check turn entry
          if( (Mathf.Abs( playerpos.x ) < 2.0f) && (Mathf.Abs( playerpos.z ) < 1.5f) )
          {
