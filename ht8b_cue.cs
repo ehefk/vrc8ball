@@ -194,11 +194,13 @@ public void _otherunlock()
    bOtherLock = false;
 }
 
+#if !HT_QUEST
 public void _primarycontrol()
 {
    dkPrimaryControl = true;
    dkPrimaryControlLock = true;
 }
+#endif
 
 void Update()
 {
