@@ -40,6 +40,9 @@
                            to detect and apply collisions
                         -  Removed atan2 usage in mobile shaders
                         -  Upgraded pocket triggers to be circles
+                        -  Fixed issue with desktop mode breaking due to script order
+                        -  Added dynamic cubemap that refreshes on newgame
+                        -  Updated table geometry
 
  Networking Model Information:
    
@@ -201,11 +204,9 @@ const float k_F_ROLL          = 0.01f;                // Friction coefficient of
 const float k_SPOT_POSITION_X = 0.5334f;              // First X position of the racked balls
 const float k_SPOT_CAROM_X    = 0.8001f;              // Spot position for carom mode
 
-const float k_RACK_HEIGHT     = -0.0702f;             // Rack position on Y axis
+const float k_RACK_HEIGHT     = -0.0764f;             // Rack position on Y axis
 const float k_GRAVITY         = 9.80665f;             // Earths gravitational acceleration
 const float k_BALL_MASS       = 0.16f;                // Weight of ball in kg
-
-public bool IS_ROLLING = false;
 
 Vector3 k_CONTACT_POINT = new Vector3( 0.0f, -0.03f, 0.0f );
 
@@ -265,7 +266,6 @@ const string LOG_END =  "</color>";
 [SerializeField]        GameObject     gametable;
 [SerializeField]        GameObject     infBaseTransform;
 [SerializeField]        GameObject     markerObj;
-[SerializeField]        GameObject     infHowToStart;
 [SerializeField]        GameObject     marker9ball;
 [SerializeField]        GameObject     tableoverlayUI;
 [SerializeField]        GameObject     fxColliderBase;
@@ -313,6 +313,8 @@ const string LOG_END =  "</color>";
 [SerializeField]        AudioClip      snd_spinstop;
 [SerializeField]        AudioClip      snd_hitball;
 
+[SerializeField]        ReflectionProbe   reflection_main;
+
 #endregion
 
 // Audio Components
@@ -328,7 +330,7 @@ AudioSource aud_main;
 //  data positions are marked as <#ushort>:<#bit> (<hexmask>) <description>
 
 uint  sn_pocketed    = 0x00U;    // 18:0 (0xffff)  Each bit represents each ball, if it has been pocketed or not
-public bool sn_simulating  = false;    // 19:0 (0x01)    True whilst balls are rolling
+bool  sn_simulating  = false;    // 19:0 (0x01)    True whilst balls are rolling
 uint  sn_turnid      = 0x00U;    // 19:1 (0x02)    Whos turn is it, 0 or 1
 bool  sn_foul        = false;    // 19:2 (0x04)    End-of-turn foul marker
 bool  sn_open        = true;     // 19:3 (0x08)    Is the table open?
@@ -1206,6 +1208,8 @@ void _onlocal_newgame()
    gripControllers[0].useDesktop = usr_desktop;
    gripControllers[1].useDesktop = usr_desktop;
    #endif
+
+   reflection_main.RenderProbe(); 
 }
 
 #endregion
@@ -1222,6 +1226,7 @@ float    cue_fdir;
 
 #if HT_QUEST
 #else
+[HideInInspector]
 public Vector3 dkTargetPos;            // Target for desktop aiming
 #endif
 
@@ -1264,8 +1269,8 @@ void _onlocal_pocketball( int id )
    }
 
    // set this for later
-   ball_CO[ id ].x = -0.9847f + (float)total * k_BALL_DIAMETRE;
-   ball_CO[ id ].z = 0.768f;
+   ball_CO[ id ].x = -0.966f + (float)total * k_BALL_DIAMETRE;
+   ball_CO[ id ].z = 0.726f;
    
    sn_pocketed ^= 1U << id;
 
@@ -3211,8 +3216,8 @@ void _ht_desktopui_exit()
 
    #if !HT_QUEST
 
-   gripControllers[ 0 ].dkPrimaryControl = true;
-   gripControllers[ 1 ].dkPrimaryControl = true;
+   gripControllers[ 0 ]._primarycontrol();
+   gripControllers[ 1 ]._primarycontrol();
 
    Networking.LocalPlayer.SetWalkSpeed( 2.0f );
    Networking.LocalPlayer.SetRunSpeed( 4.0f );
@@ -3701,6 +3706,8 @@ private void Start()
 
    // turn off guideline
    _vis_disableobjects();
+
+   reflection_main.RenderProbe();
 }
 
 #endregion
