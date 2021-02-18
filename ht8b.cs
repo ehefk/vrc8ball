@@ -825,7 +825,7 @@ void _onlocal_turnchange()
       if( sn_foul )
       {
          isReposition = true;
-         repoMaxX = k_TABLE_WIDTH;
+         repoMaxX = k_pR.x;
          markerObj.SetActive( true );
 
          markerObj.transform.localPosition = ball_CO[ 0 ];
@@ -3502,8 +3502,8 @@ private void Update()
       {
          // Clamp position to table / kitchen
          Vector3 temp = markerObj.transform.localPosition;
-         temp.x = Mathf.Clamp( temp.x, -k_TABLE_WIDTH, repoMaxX );
-         temp.z = Mathf.Clamp( temp.z, -k_TABLE_HEIGHT, k_TABLE_HEIGHT );
+         temp.x = Mathf.Clamp( temp.x, -k_pR.x, repoMaxX );
+         temp.z = Mathf.Clamp( temp.z, -k_pO.z, k_pO.z );
          temp.y = 0.0f;
          markerObj.transform.localPosition = temp;
          markerObj.transform.localRotation = Quaternion.identity;
