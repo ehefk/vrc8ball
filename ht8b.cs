@@ -1505,7 +1505,7 @@ void _phy_table_init()
    k_vC.z = k_TABLE_HEIGHT-k_POCKET_RADIUS;
 
    k_vD.x = k_vA.x - 0.016f;
-   k_vD.z = k_vA.z + 0.029f;
+   k_vD.z = k_vA.z + 0.060f;
 
    // Aux points
    k_vX = k_vD + Vector3.forward;
@@ -1628,7 +1628,7 @@ void _phy_ball_table_carom( int id )
 
 void _phy_ball_table_std( int id )
 {
-   Vector3 A, N, a_to_v;
+   Vector3 A, N, _V, V, a_to_v;
    float dot;
 
    A = ball_CO[ id ];
@@ -1739,11 +1739,33 @@ void _phy_ball_table_std( int id )
 #endif
             if( A.z > k_pN.z )
             { 
-               // Static resolution
-               A.z = k_pN.z;
+               // Velocity based A->C delegation ( scuffed CCD )
+               a_to_v = A - k_vA;
+               _V = Vector3.Scale( ball_V[ id ], _sign_pos );
+               V.x = -_V.z;
+               V.y =  0.0f;
+               V.z =  _V.x;
 
-               // Dynamic
-               _phy_bounce_cushion( id, Vector3.Scale( k_vA_vB_normal, _sign_pos ) );
+               if( Vector3.Dot( V, a_to_v ) > 0.0f )
+               {
+                  // Region C ( Delegated )
+                  a_to_v = A - k_pL;
+
+                  // Static resolution
+                  dot = Vector3.Dot( a_to_v, k_vA_vD );
+                  A = k_pL + dot * k_vA_vD;
+
+                  // Dynamic
+                  _phy_bounce_cushion( id, Vector3.Scale( k_vA_vD_normal, _sign_pos ) );
+               }
+               else
+               {
+                  // Static resolution
+                  A.z = k_pN.z;
+
+                  // Dynamic
+                  _phy_bounce_cushion( id, Vector3.Scale( k_vA_vB_normal, _sign_pos ) );
+               }
             }
          }
          else
