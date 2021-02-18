@@ -3,6 +3,11 @@ Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318c
 
 ![](https://i.imgur.com/3cHrbf1.jpg)
 
+### Thank you:
+**Merlin**: UdonSharp
+
+**dragonash2019**: Lots of quality feedback
+
 ### Features
 - Hand written, pool oriented physics engine based on real world values
 - CCD for cue ball
