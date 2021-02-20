@@ -1,7 +1,7 @@
 /* 
  https://www.harrygodden.com
 
- HT8B v1.6.0
+ HT8B v1.6.2
 
  Update log:
    16.12.2020 (0.1.3a)  -  Fix for new game, wrong local turn colour
@@ -43,6 +43,7 @@
                         -  Fixed issue with desktop mode breaking due to script order
                         -  Added dynamic cubemap that refreshes on newgame
                         -  Updated table geometry
+               1.6.2    -  Fix for error on regions Ma, Mc for z(B) > z(A) causing warp    ( Thanks: Traediras )
 
  Networking Model Information:
    
@@ -366,18 +367,6 @@ uint sn_gamemode_prv;
 uint sn_timer_prv;
 bool sn_teams_prv;
 bool sn_lobbyclosed_prv;
-
-// unused
-//bool sn_simulating_prv;
-//bool sn_foul_prv;
-//uint sn_playerxor_prv;
-//uint sn_colourset_prv;
-//bool sn_inmenu_prv;
-//uint sn_winnerid_prv;
-//bool sn_permit_prv;
-//bool sn_rs_call8_prv;
-//bool sn_rs_call_prv;
-//bool sn_rs_anyf_prv;
 
 // Local gamestates
 [HideInInspector]
@@ -1746,17 +1735,28 @@ void _phy_ball_table_std( int id )
                V.y =  0.0f;
                V.z =  _V.x;
 
-               if( Vector3.Dot( V, a_to_v ) > 0.0f )
+               if( A.z > k_vA.z )
                {
-                  // Region C ( Delegated )
-                  a_to_v = A - k_pL;
+                  if( Vector3.Dot( V, a_to_v ) > 0.0f )
+                  {
+                     // Region C ( Delegated )
+                     a_to_v = A - k_pL;
 
-                  // Static resolution
-                  dot = Vector3.Dot( a_to_v, k_vA_vD );
-                  A = k_pL + dot * k_vA_vD;
+                     // Static resolution
+                     dot = Vector3.Dot( a_to_v, k_vA_vD );
+                     A = k_pL + dot * k_vA_vD;
 
-                  // Dynamic
-                  _phy_bounce_cushion( id, Vector3.Scale( k_vA_vD_normal, _sign_pos ) );
+                     // Dynamic
+                     _phy_bounce_cushion( id, Vector3.Scale( k_vA_vD_normal, _sign_pos ) );
+                  }
+                  else
+                  {
+                     // Static resolution
+                     A.z = k_pN.z;
+
+                     // Dynamic
+                     _phy_bounce_cushion( id, Vector3.Scale( k_vA_vB_normal, _sign_pos ) );
+                  }
                }
                else
                {
@@ -2014,8 +2014,7 @@ void _phy_ball_step( int id )
          float dot = Vector3.Dot( velocityDelta, normal );
 
          // Dynamic resolution (Cr is assumed to be (1)+1.0)
-         if( dot > 0.0f ) 
-         {
+
             Vector3 reflection = normal * dot;
             ball_V[id] -= reflection;
             ball_V[i] += reflection;
@@ -2098,7 +2097,6 @@ void _phy_ball_step( int id )
                   }
                }
             }
-         }
       }
    }
 }
@@ -4440,7 +4438,7 @@ void _log( string ln )
       LOG_LEN = LOG_MAX;
    }
 
-   string output = "ht8b 1.6.0";
+   string output = "ht8b 1.6.2";
       
    // Add information about game state:
    output += Networking.IsOwner(Networking.LocalPlayer, this.gameObject) ? 
