@@ -1437,6 +1437,8 @@ void _phy_bounce_cushion( int id, Vector3 N )
    ball_W[ id ] += rb * W1;
 }
 
+// Collider layout: https://harrygodden.com/pool/collider-regions.png ( top right corner of table )
+//  Positions and velocities are flipped based on ball quadrant ( x>0, z>0 )
 Vector3 k_vA = new Vector3();
 Vector3 k_vB = new Vector3();
 Vector3 k_vC = new Vector3();
@@ -1478,6 +1480,7 @@ const float k_INNER_RADIUS = 0.072f;
 
 Vector3 _sign_pos = new Vector3(0.0f,1.0f,0.0f);
 
+// Procedurally set up positions of collider vertices
 void _phy_table_init()
 {
    // Handy values
