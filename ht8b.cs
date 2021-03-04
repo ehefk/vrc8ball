@@ -2620,7 +2620,7 @@ void _htmenu_viewjoin()
          else
          {
             // Player is joined
-            if( host.playerId != player.playerId )
+            if( host.playerId != player.playerId || i == 0 )
             {
                m_lobbyNames[ i ].text = "<color=\"#ffffff\">"+player.displayName+"</color>";
                playernum ++;
