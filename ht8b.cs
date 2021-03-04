@@ -44,6 +44,7 @@
                         -  Added dynamic cubemap that refreshes on newgame
                         -  Updated table geometry
                1.6.2    -  Fix for error on regions Ma, Mc for z(B) > z(A) causing warp    ( Thanks: Traediras )
+               1.6.3    -  Removed check that would prevent error recovery
 
  Networking Model Information:
    
@@ -1437,8 +1438,6 @@ void _phy_bounce_cushion( int id, Vector3 N )
    ball_W[ id ] += rb * W1;
 }
 
-// Collider layout: https://harrygodden.com/pool/collider-regions.png ( top right corner of table )
-//  Positions and velocities are flipped based on ball quadrant ( x>0, z>0 )
 Vector3 k_vA = new Vector3();
 Vector3 k_vB = new Vector3();
 Vector3 k_vC = new Vector3();
@@ -1480,7 +1479,6 @@ const float k_INNER_RADIUS = 0.072f;
 
 Vector3 _sign_pos = new Vector3(0.0f,1.0f,0.0f);
 
-// Procedurally set up positions of collider vertices
 void _phy_table_init()
 {
    // Handy values
@@ -1558,7 +1556,6 @@ void _phy_table_init()
 // Check pocket condition
 void _phy_ball_pockets( int id )
 {
-   float zz, zx;
    Vector3 A;
 
    A = ball_CO[ id ];
@@ -2595,45 +2592,36 @@ void _htmenu_viewjoin()
       {
          VRCPlayerApi player = Networking.GetOwner( m_playerslot_owners[ i ] );
 
-         // Mark host
-         if( i == 0 )
+         // Its us
+         if( local_playerid == i )
          {
-            m_lobbyNames[ i ].text = "<color=\"#f2ecb8\">"+player.displayName+"</color>";
-            playernum ++;
-         }
-         else
-         {
-            // Its us
-            if( local_playerid == i )
+            // Error: Local believes that we are in lobby, but someone else is there
+            if( player.playerId != Networking.LocalPlayer.playerId )
             {
-               // Error: Local believes that we are in lobby, but someone else is there
-               if( player.playerId != Networking.LocalPlayer.playerId )
-               {
-                  #if HT8B_DEBUGGER
-                  _log( LOG_ERR + "Error: de-sync local lobby status" + LOG_END );
-                  #endif
+               #if HT8B_DEBUGGER
+               _log( LOG_ERR + "Error: de-sync local lobby status" + LOG_END );
+               #endif
 
-                  local_playerid = -1;
-                  m_lobbyNames[ i ].text = "<color=\"#ff0000\">ERROR</color>";
-               }
-               else
-               {
-                  playernum ++;
-                  m_lobbyNames[ i ].text = "<color=\"#cae4ed\">"+player.displayName+"</color>";
-               }
+               local_playerid = -1;
+               m_lobbyNames[ i ].text = "<color=\"#ff0000\">CONFLICT</color>";
             }
             else
             {
-               // Player is joined
-               if( host.playerId != player.playerId )
-               {
-                  m_lobbyNames[ i ].text = "<color=\"#ffffff\">"+player.displayName+"</color>";
-                  playernum ++;
-               }
-               else
-               {
-                  m_lobbyNames[ i ].text = "";
-               }
+               playernum ++;
+               m_lobbyNames[ i ].text = "<color=\"#cae4ed\">"+player.displayName+"</color>";
+            }
+         }
+         else
+         {
+            // Player is joined
+            if( host.playerId != player.playerId )
+            {
+               m_lobbyNames[ i ].text = "<color=\"#ffffff\">"+player.displayName+"</color>";
+               playernum ++;
+            }
+            else
+            {
+               m_lobbyNames[ i ].text = "";
             }
          }
       }
