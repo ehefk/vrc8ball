@@ -1590,6 +1590,8 @@ void _phy_ball_pockets( int id )
    }
 }
 
+GameObject g_ball_current;
+
 // Pocketless table
 void _phy_ball_table_carom( int id )
 {
@@ -1900,6 +1902,8 @@ void _phy_ball_table_std( int id )
 // Advance simulation 1 step for ball id
 void _phy_ball_step( int id )
 {
+   g_ball_current = balls_render[ id ];
+
    // Since v1.5.0
    Vector3 V = ball_V[ id ];
    Vector3 W = ball_W[ id ];
@@ -1985,7 +1989,9 @@ void _phy_ball_step( int id )
 
    ball_W[ id ] = W;
    ball_V[ id ] = V;
-   balls_render[ id ].transform.Rotate( W.normalized, W.magnitude * k_FIXED_TIME_STEP * -Mathf.Rad2Deg, Space.World );
+
+   g_ball_current.transform.Rotate( W.normalized, W.magnitude * k_FIXED_TIME_STEP * -Mathf.Rad2Deg, Space.World );
+   g_ball_current.GetComponent<AudioSource>().Play();
 
    uint ball_bit = 0x1U << id;
 
@@ -2023,7 +2029,7 @@ void _phy_ball_step( int id )
             if( ball_V[ id ].sqrMagnitude > 0 && ball_V[ i ].sqrMagnitude > 0 )
             {
                //aud_main.PlayOneShot( snd_Hits[ 0 ], 1.0f );
-               AudioSource.PlayClipAtPoint( snd_Hits[ 0 ], ball_CO[ id ], 1.0f );
+               g_ball_current.GetComponent<AudioSource>().PlayOneShot(snd_Hits[ id % 3 ], Mathf.Clamp01(reflection.magnitude));
             }
 
             // First hit detected
@@ -3442,7 +3448,7 @@ void _hit_general()
 
    sn_oursim = true;
 
-   AudioSource.PlayClipAtPoint( snd_hitball, cuetip.transform.position, 1.0f );
+   balls_render[0].GetComponent<AudioSource>().PlayOneShot( snd_hitball, 1.0f );
 }
 
 private void Update()
@@ -3838,9 +3844,29 @@ public void _tr_sagu()
    _tr_newgame();
 }
 
+// Player stopped holding input trigger
+public void _tr_endhit()
+{
+   sn_armed = false;
+
+   #if !HT_QUEST
+   guidelineMat.SetColor( "_Colour", k_aimColour_aim );
+   #endif 
+}
+
 // Player is holding input trigger
 public void _tr_starthit()
 {
+   // Release hit if cuetip is inside of ball
+   if( Vector3.Distance( cuetip.transform.position, ball_CO[0] ) < k_BALL_RADIUS )
+   {
+      // TODO: play a sound here to signify error
+      // TODO: practice mode, allow dragging ball about
+
+      _tr_endhit();
+      return;
+   }
+
    // lock aim variables
    bool isOurTurn = ((local_playerid >= 0) && (local_teamid == sn_turnid)) || gm_practice;
 
@@ -3852,16 +3878,6 @@ public void _tr_starthit()
       guidelineMat.SetColor( "_Colour", k_aimColour_locked );
       #endif
    }
-}
-
-// Player stopped holding input trigger
-public void _tr_endhit()
-{
-   sn_armed = false;
-
-   #if !HT_QUEST
-   guidelineMat.SetColor( "_Colour", k_aimColour_aim );
-   #endif 
 }
 
 // Player was moving cueball, place it down
