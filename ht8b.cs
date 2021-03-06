@@ -1990,7 +1990,7 @@ void _phy_ball_step( int id )
    ball_W[ id ] = W;
    ball_V[ id ] = V;
 
-   g_ball_current.transform.Rotate( W.normalized, W.magnitude * k_FIXED_TIME_STEP * -Mathf.Rad2Deg, Space.World );
+   g_ball_current.transform.Rotate( this.transform.TransformDirection( W.normalized ), W.magnitude * k_FIXED_TIME_STEP * -Mathf.Rad2Deg, Space.World );
    g_ball_current.GetComponent<AudioSource>().Play();
 
    uint ball_bit = 0x1U << id;
