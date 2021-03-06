@@ -1282,13 +1282,13 @@ void _onlocal_pocketball( int id )
    // VFX ( make ball move )
    Rigidbody body = balls_render[ id ].GetComponent< Rigidbody >();
    body.isKinematic = false;
-   body.velocity = new Vector3(
+   body.velocity = this.transform.TransformVector( new Vector3(
    
       ball_V[ id ].x,
       0.0f,
       ball_V[ id ].z
       
-   );
+   ));
 
    #else
 
