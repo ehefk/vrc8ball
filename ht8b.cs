@@ -277,6 +277,7 @@ const string LOG_END =  "</color>";
 [SerializeField]        GameObject     point4ball;
 [SerializeField]        GameObject[]   cueRenderObjs;
 [SerializeField]        GameObject     select4b;
+[SerializeField]        GameObject     rackPosition;
 
 // Meshes
 [SerializeField]        Mesh[]         cueball_meshes;
@@ -1234,11 +1235,11 @@ void _vis_rackballs()
       
       if( (ball_bit & sn_pocketed) == ball_bit )
       {
-         balls_render[ i ].transform.localPosition = new Vector3(
-            ball_CO[ i ].x,
-            k_RACK_HEIGHT,
-            ball_CO[ i ].z
-         );
+         // Recover Y position since its lost in networking
+         Vector3 rack_position = ball_CO[ i ];
+         rack_position.y = k_rack_position.y;
+         
+         balls_render[ i ].transform.localPosition = rack_position;
       }
 
       ball_bit <<= 1;
@@ -1259,10 +1260,9 @@ void _onlocal_pocketball( int id )
       total += (sn_pocketed >> i) & 0x1U;
    }
 
-   // set this for later
-   ball_CO[ id ].x = -0.966f + (float)total * k_BALL_DIAMETRE;
-   ball_CO[ id ].z = 0.726f;
-   
+   // place ball on the rack
+   ball_CO[ id ] = k_rack_position + (float)total * k_BALL_DIAMETRE * k_rack_direction;
+
    sn_pocketed ^= 1U << id;
 
    uint bmask = 0x1FCU << ((int)(sn_turnid ^ sn_playerxor) * 7);
@@ -1292,14 +1292,7 @@ void _onlocal_pocketball( int id )
    ));
 
    #else
-
-   balls_render[ id ].transform.position = new Vector3(
-
-      ball_CO[ id ].x,
-      k_RACK_HEIGHT,
-      ball_CO[ id ].y
-   
-   );
+   balls_render[ id ].transform.localPosition = ball_CO[ id ];
    #endif
 }
 
@@ -1480,8 +1473,14 @@ const float k_INNER_RADIUS = 0.072f;
 
 Vector3 _sign_pos = new Vector3(0.0f,1.0f,0.0f);
 
+Vector3 k_rack_position = new Vector3();
+Vector3 k_rack_direction = new Vector3();
+
 void _phy_table_init()
 {
+   k_rack_position = rackPosition.transform.localPosition;
+   k_rack_direction = this.transform.InverseTransformDirection( rackPosition.transform.forward );
+
    // Handy values
    k_MINOR_REGION_CONST = k_TABLE_WIDTH - k_TABLE_HEIGHT;
 
@@ -4349,9 +4348,7 @@ public void _netread()
          marker9ball.transform.localPosition = ball_CO[ target ];
       }
 
-      #if !HT_QUEST
       _vis_rackballs();
-      #endif
 
       if( sn_timer > 0 && !timer_running )
       {
