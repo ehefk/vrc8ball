@@ -9,6 +9,7 @@ using UnityEngine;
 using VRC.SDKBase;
 using VRC.Udon;
 
+[DefaultExecutionOrder(128)]
 public class ht8b_cue : UdonSharpBehaviour
 {
 [SerializeField]

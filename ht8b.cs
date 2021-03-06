@@ -162,6 +162,7 @@ using VRC.SDKBase;
 using VRC.Udon;
 using System;
 
+[DefaultExecutionOrder(129)]
 public class ht8b : UdonSharpBehaviour {
 
 #region R_CONSTANTS
