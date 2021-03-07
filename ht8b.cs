@@ -1222,8 +1222,6 @@ float    cue_fdir;
 public Vector3 dkTargetPos;            // Target for desktop aiming
 #endif
 
-#if !HT_QUEST
-
 // Finalize positions onto their rack spots
 void _vis_rackballs()
 {
@@ -1245,8 +1243,6 @@ void _vis_rackballs()
       ball_bit <<= 1;
    }
 }
-
-#endif
 
 // Internal game state pocket and enable unity physics to play out the rest
 void _onlocal_pocketball( int id )
