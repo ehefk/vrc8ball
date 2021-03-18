@@ -1,17 +1,30 @@
-## I no longer maintain this project
-The Releases will remain up, but may have bugs. Please check out: https://github.com/Xiexe/VRCBilliards for an version being maintained.
-
-### NOTE
-While the github license provided is Unlicense, this only applies to source code.
-
-Any art assets distributed with this project now or in the past, I declare to be 'CC BY-NC-ND 3.0' as opposed to falling under default copyright law 'All Rights Reserved', as they did previously
-
-However, if you want to modify these assets I don't have a problem with it unless your project is deeply offensive.
-
-# VRChat 8 Ball source mirror
+# VRChat 8 Ball Pool source mirror
 Original world: https://vrchat.com/home/world/wrld_d02883d1-7d79-4d51-87e2-b318ca4c2b37
 
 ![](https://i.imgur.com/3cHrbf1.jpg)
+
+### Thank you:
+**Merlin**: UdonSharp
+
+**dragonash2019**: Lots of quality feedback
+
+### Features
+- Hand written, pool oriented physics engine based on real world values
+- CCD for cue ball
+- Deterministic Networking model and full late-joiner support
+- Automatically enforced game rules
+- Desktop / VR / Quest support
+- 1, 2, 3, or 4 players
+
+### Modes
+- 8 ball English/American mix Pool
+- 9 ball American standard Pool
+- 4 ball Japanese Yotsudama and Korean Sagu modes
+
+### Planned
+- Tournament mode
+- Visual events and information
+- Translations into 10 different languages
 
 ## For World Creators
 Follow the Collisions layers steps first before importing package!
@@ -19,8 +32,8 @@ Follow the Collisions layers steps first before importing package!
 This project can be downloaded from [The releases page](https://github.com/Terri00/vrc8ball/releases)
 
 ### Dependencies / Setup
-- Install VRCSDK 3
-- Install [Udon Sharp](https://github.com/MerlinVR/UdonSharp)
+- Install **latest** VRCSDK 3
+- Install **latest** [Udon Sharp](https://github.com/MerlinVR/UdonSharp)
 - Import the package
 
 #### Collision layers

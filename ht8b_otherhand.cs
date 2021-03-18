@@ -1,4 +1,4 @@
-﻿
+
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
@@ -7,10 +7,23 @@ using VRC.Udon;
 public class ht8b_otherhand : UdonSharpBehaviour {
 
 [SerializeField] GameObject objPrimary;
+ht8b_cue usPrimary;
 
 Vector3 originalDelta;
 bool isHolding = false;
 public bool bOtherHold = false;  // Primary is being held
+Vector3 lockpos;
+
+private void OnPickupUseDown()
+{
+   usPrimary._otherlock();
+   lockpos = this.transform.position;
+}
+
+private void OnPickupUseUp()  // VR
+{
+   usPrimary._otherunlock();
+}
 
 private void OnPickup()
 {
@@ -28,6 +41,7 @@ private void OnDrop()
    }
 
    isHolding = false;
+   usPrimary._otherunlock();
 }
 
 private void Update()
@@ -41,6 +55,7 @@ private void Update()
 
 private void Start()
 {
+   usPrimary = objPrimary.GetComponent<ht8b_cue>();
    OnDrop();   
 }
 }
