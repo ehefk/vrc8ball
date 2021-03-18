@@ -32,8 +32,8 @@ Follow the Collisions layers steps first before importing package!
 This project can be downloaded from [The releases page](https://github.com/Terri00/vrc8ball/releases)
 
 ### Dependencies / Setup
-- Install VRCSDK 3
-- Install [Udon Sharp](https://github.com/MerlinVR/UdonSharp)
+- Install **latest** VRCSDK 3
+- Install **latest** [Udon Sharp](https://github.com/MerlinVR/UdonSharp)
 - Import the package
 
 #### Collision layers
